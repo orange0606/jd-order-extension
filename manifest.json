@@ -13,6 +13,7 @@
   "host_permissions": [
     "https://shop.jd.com/*",
     "https://*.jd.com/*",
+    "https://pay.jingbashi.com/*",
     "http://localhost:3000/*",
     "http://127.0.0.1:3000/*"
   ],
@@ -29,6 +30,15 @@
       "css": ["content/content.css"],
       "run_at": "document_idle",
       "all_frames": false
+    },
+    {
+      "matches": [
+        "https://pay.jingbashi.com/*"
+      ],
+      "js": ["config.js", "content/content.js"],
+      "css": ["content/content.css"],
+      "run_at": "document_idle",
+      "all_frames": true
     }
   ],
   "action": {

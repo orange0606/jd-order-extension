@@ -38,6 +38,11 @@ function bindEvents() {
     document.getElementById('auto-ship-interval-row').style.display = on ? 'flex' : 'none';
     document.getElementById('auto-ship-timerange-row').style.display = on ? 'flex' : 'none';
   });
+
+  // 同步物流开关联动
+  document.getElementById('setting-auto-sync-express').addEventListener('change', (e) => {
+    document.getElementById('sync-express-interval-row').style.display = e.target.checked ? 'flex' : 'none';
+  });
 }
 
 // ==================== 视图切换 ====================
@@ -257,9 +262,12 @@ async function loadSettings() {
     const cfg = (typeof ZHICHACHA_CONFIG !== 'undefined') ? ZHICHACHA_CONFIG : {};
     const timeStart = settings.autoShipTimeStart || cfg.autoShipTimeStart || '07:00';
     const timeEnd = settings.autoShipTimeEnd || cfg.autoShipTimeEnd || '22:00';
-    document.getElementById('auto-ship-timerange-desc').textContent = `勾选后仅在 ${timeStart} ~ ${timeEnd} 内自动执行（时间在 config.js 配置）`;
+    document.getElementById('auto-ship-timerange-desc').textContent = `勾选后仅在 ${timeStart} ~ ${timeEnd} 内自动执行`;
     document.getElementById('auto-ship-interval-row').style.display = settings.autoShip ? 'flex' : 'none';
     document.getElementById('auto-ship-timerange-row').style.display = settings.autoShip ? 'flex' : 'none';
+    document.getElementById('setting-auto-sync-express').checked = settings.autoSyncExpress === true;
+    document.getElementById('setting-sync-express-interval').value = settings.autoSyncExpressInterval || 120;
+    document.getElementById('sync-express-interval-row').style.display = settings.autoSyncExpress ? 'flex' : 'none';
   } catch (e) {
     console.error('加载设置失败:', e);
   }
@@ -267,6 +275,7 @@ async function loadSettings() {
 
 async function saveSettings() {
   const interval = parseInt(document.getElementById('setting-auto-ship-interval').value, 10) || 30;
+  const expressInterval = parseInt(document.getElementById('setting-sync-express-interval').value, 10) || 120;
   // 时间段从 config.js 读取
   const cfg = (typeof ZHICHACHA_CONFIG !== 'undefined') ? ZHICHACHA_CONFIG : {};
   const settings = {
@@ -276,7 +285,9 @@ async function saveSettings() {
     autoShipInterval: Math.max(1, Math.min(720, interval)),
     autoShipTimeRange: document.getElementById('setting-auto-ship-timerange').checked,
     autoShipTimeStart: cfg.autoShipTimeStart || '07:00',
-    autoShipTimeEnd: cfg.autoShipTimeEnd || '22:00'
+    autoShipTimeEnd: cfg.autoShipTimeEnd || '22:00',
+    autoSyncExpress: document.getElementById('setting-auto-sync-express').checked,
+    autoSyncExpressInterval: Math.max(1, Math.min(1440, expressInterval))
   };
   
   await sendMessage({

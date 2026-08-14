@@ -11,6 +11,15 @@
   // ==================== 配置 ====================
   const CONFIG = {
     targetUrl: 'shop.jd.com/jdm/trade/orders/order-list',
+    // 京巴士物流状态页（从 config.js 读取，去掉协议和query用于URL匹配）
+    expressUrl: (() => {
+      try {
+        const u = new URL((typeof ZHICHACHA_CONFIG !== 'undefined' && ZHICHACHA_CONFIG.jbsExpressUrl) || 'https://pay.jingbashi.com/back.php/order/status');
+        return u.host + u.pathname;
+      } catch (e) {
+        return 'pay.jingbashi.com/back.php/order/status';
+      }
+    })(),
     checkInterval: 2000,
     maxRetry: 10
   };
@@ -101,6 +110,10 @@
   function isTargetPage() {
     return window.location.href.includes(CONFIG.targetUrl) ||
            window.location.href.includes('/jdm/trade/orders/');
+  }
+
+  function isExpressPage() {
+    return window.location.href.includes(CONFIG.expressUrl);
   }
 
   /**
@@ -688,40 +701,51 @@
     floatingPanel.id = 'jd-order-scraper-panel';
     floatingPanel.innerHTML = `
       <div class="scraper-header">
-        <span class="scraper-title">📦 智查查同步助手</span>
+        <span class="scraper-title" id="panel-title">📦 智查查同步助手</span>
         <span class="risk-badge" id="risk-badge" style="display:none;">
           ⚠️ <span id="risk-count">0</span>
         </span>
         <div class="header-actions">
-          <button class="header-icon-btn" id="btn-header-sync" title="同步当前页">🔄</button>
-          <button class="header-icon-btn" id="btn-header-ship" title="立即查单发货">🚚</button>
-          <button class="header-icon-btn" id="btn-header-clear" title="清除风险提示">🧹</button>
+          <button class="header-icon-btn jd-only" id="btn-header-sync" title="同步当前页">🔄</button>
+          <button class="header-icon-btn jd-only" id="btn-header-ship" title="立即查单发货">🚚</button>
+          <button class="header-icon-btn jd-only" id="btn-header-goto-express" title="同步物流（发取件码）">📮</button>
+          <button class="header-icon-btn jd-only" id="btn-header-clear" title="清除风险提示">🧹</button>
+          <button class="header-icon-btn express-only" id="btn-header-express" title="立即同步物流" style="display:none;">📮</button>
           <button class="scraper-minimize" title="最小化/展开">−</button>
         </div>
       </div>
       <div class="scraper-body">
-        <div class="login-warning" id="login-warning" style="display:none;">
+        <div class="login-warning jd-only" id="login-warning" style="display:none;">
           ⚠️ 未登录智查查，无法同步到服务器<br>
           <span style="font-size:11px;">请点击插件图标登录</span>
         </div>
-        <div class="login-warning" id="shop-warning" style="display:none; background:#fff7e6; border-color:#ffd591; color:#fa8c16;">
+        <div class="login-warning jd-only" id="shop-warning" style="display:none; background:#fff7e6; border-color:#ffd591; color:#fa8c16;">
           ⚠️ 当前店铺未绑定账号，无法同步<br>
           <span style="font-size:11px;" id="shop-warning-text">请先在后台添加该店铺</span>
         </div>
-        <div class="scraper-status" id="scraper-status">
+        <div class="scraper-status jd-only" id="scraper-status">
           <span class="status-dot status-info"></span>
           <span class="status-text">初始化中...</span>
         </div>
-        <div class="scraper-status" id="ship-status" style="display:none;">
+        <div class="scraper-status jd-only" id="ship-status" style="display:none;">
           <span class="status-dot status-info" id="ship-status-dot"></span>
           <span class="status-text" id="ship-status-text"></span>
         </div>
-        <div class="scraper-actions">
+        <div class="scraper-status express-only" id="express-status" style="display:none;">
+          <span class="status-dot status-info" id="express-status-dot"></span>
+          <span class="status-text" id="express-status-text"></span>
+        </div>
+        <div class="scraper-actions jd-only">
           <button class="scraper-btn scraper-btn-primary" id="btn-scrape">
             🔄 同步当前页订单
           </button>
           <button class="scraper-btn scraper-btn-secondary" id="btn-clear-risk">
             🧹 清除风险提示
+          </button>
+        </div>
+        <div class="scraper-actions express-only" id="express-actions" style="display:none;">
+          <button class="scraper-btn scraper-btn-primary" id="btn-sync-express">
+            📮 立即同步物流状态
           </button>
         </div>
       </div>
@@ -738,6 +762,17 @@
     document.getElementById('btn-header-ship').addEventListener('click', () => {
       runBatchShipOnce();
     });
+
+    // 跳转京巴士同步物流页
+    document.getElementById('btn-header-goto-express').addEventListener('click', () => {
+      const url = (typeof ZHICHACHA_CONFIG !== 'undefined' && ZHICHACHA_CONFIG.jbsExpressUrl) || 'https://pay.jingbashi.com/back.php/order/status?ref=addtabs';
+      window.open(url, '_blank');
+    });
+
+    // 立即同步物流按钮（标题栏和内容区）
+    const handleExpressClick = () => runSyncExpressOnce();
+    document.getElementById('btn-header-express').addEventListener('click', handleExpressClick);
+    document.getElementById('btn-sync-express').addEventListener('click', handleExpressClick);
 
     // 清除按钮（标题栏和内容区共用）
     const handleClearClick = () => {
@@ -938,6 +973,19 @@
     txt.textContent = text;
   }
 
+  // 同步物流独立状态
+  function updateExpressStatus(text, type = 'info') {
+    if (!floatingPanel) return;
+    const wrap = document.getElementById('express-status');
+    const dot = document.getElementById('express-status-dot');
+    const txt = document.getElementById('express-status-text');
+    if (!wrap || !dot || !txt) return;
+
+    wrap.style.display = 'flex';
+    dot.className = `status-dot status-${type}`;
+    txt.textContent = text;
+  }
+
   // ==================== 批量风险检测 ====================
 
   async function batchRiskCheck(orders) {
@@ -1125,6 +1173,9 @@
   let autoShipTimer = null;       // setInterval 句柄
   let autoShipFirstTimer = null;  // 首次执行 setTimeout 句柄
   let isAutoShipping = false;     // 防止并发执行
+  let expressTimer = null;
+  let expressFirstTimer = null;
+  let isSyncingExpress = false;
 
   /**
    * 通过文字内容查找"批量查单发货"按钮
@@ -1349,9 +1400,9 @@
    * 计算距离下次执行的毫秒数
    * 综合考虑时间范围和执行间隔
    */
-  function calcNextDelay(settings, intervalMs) {
+  function calcNextDelay(lastTime, settings, intervalMs) {
     const now = Date.now();
-    const last = settings.lastShipTime || 0;
+    const last = lastTime || 0;
     const elapsed = now - last;
 
     // 间隔剩余时间
@@ -1412,7 +1463,7 @@
 
       const minutes = Math.max(1, Math.min(720, settings.autoShipInterval || 30));
       const intervalMs = minutes * 60 * 1000;
-      const delay = calcNextDelay(settings, intervalMs);
+      const delay = calcNextDelay(settings.lastShipTime, settings, intervalMs);
 
       const nextTime = new Date(Date.now() + delay);
       const nextStr = `${String(nextTime.getHours()).padStart(2,'0')}:${String(nextTime.getMinutes()).padStart(2,'0')}`;
@@ -1432,6 +1483,7 @@
    * 启动/重启定时查单发货
    */
   function setupAutoShipTimer() {
+    if (!isTargetPage()) return;
     if (autoShipTimer) {
       clearTimeout(autoShipTimer);
       autoShipTimer = null;
@@ -1450,7 +1502,7 @@
       }
       const minutes = Math.max(1, Math.min(720, settings.autoShipInterval || 30));
       const intervalMs = minutes * 60 * 1000;
-      const delay = calcNextDelay(settings, intervalMs);
+      const delay = calcNextDelay(settings.lastShipTime, settings, intervalMs);
 
       const nextTime = new Date(Date.now() + delay);
       const nextStr = `${String(nextTime.getHours()).padStart(2,'0')}:${String(nextTime.getMinutes()).padStart(2,'0')}`;
@@ -1463,6 +1515,214 @@
       autoShipFirstTimer = setTimeout(async () => {
         await runBatchShipOnce();
         scheduleNext();
+      }, delay);
+    });
+  }
+
+  // ==================== 同步物流状态（京巴士） ====================
+
+  /**
+   * 等待同步物流弹窗出现
+   */
+  function waitForExpressDialog(timeout = 15000) {
+    return new Promise((resolve, reject) => {
+      const start = Date.now();
+      const check = () => {
+        const dialog = document.querySelector('.jbs-send-express-modal');
+        // zeromodal 弹窗打开时存在于 DOM，关闭时会被移除
+        if (dialog && dialog.style.display !== 'none') {
+          resolve(dialog);
+          return;
+        }
+        if (Date.now() - start > timeout) {
+          reject(new Error('等待同步物流弹窗超时'));
+        } else {
+          setTimeout(check, 500);
+        }
+      };
+      check();
+    });
+  }
+
+  /**
+   * 等待发送完成：每10秒检测 .jbs-sync-buy-log-status 的 data-state
+   * data-state="success" 表示发送完成
+   */
+  function waitForExpressComplete(dialog, timeout = 300000, initialWait = 5000) {
+    return new Promise((resolve, reject) => {
+      const start = Date.now();
+      let lastState = '';
+      const check = () => {
+        const statusEl = dialog.querySelector('.jbs-sync-buy-log-status');
+        const state = statusEl ? (statusEl.getAttribute('data-state') || '') : '';
+        const text = statusEl ? statusEl.textContent.trim() : '';
+
+        if (state === 'success' || text.includes('发送完成')) {
+          resolve('done');
+          return;
+        }
+
+        // 更新面板进度
+        if (text && text !== lastState) {
+          lastState = text;
+          updateExpressStatus(`📮 ${text}`, 'info');
+        }
+
+        if (Date.now() - start > timeout) {
+          reject(new Error('同步物流执行超时（5分钟）'));
+        } else {
+          setTimeout(check, 10000);
+        }
+      };
+      setTimeout(check, initialWait);
+    });
+  }
+
+  /**
+   * 执行一次同步物流状态（并发送取件码）
+   */
+  async function runSyncExpressOnce() {
+    if (isSyncingExpress) {
+      console.log('[同步物流] 上一次尚未结束，跳过本次');
+      return;
+    }
+
+    // 时间范围判断（共用查单发货的时段设置）
+    const settings = await new Promise(r => chrome.storage.local.get('jd_settings', s => r(s.jd_settings || {})));
+    if (!isInShipTimeRange(settings)) {
+      console.log(`[同步物流] 当前时间不在 ${settings.autoShipTimeStart}~${settings.autoShipTimeEnd} 范围内，跳过`);
+      return;
+    }
+
+    isSyncingExpress = true;
+    try {
+      console.log('%c[同步物流] 开始执行', 'color:#e6a23c;font-weight:bold;');
+
+      // 检查弹窗是否已经打开（可能正在发送中）
+      let dialog = document.querySelector('.jbs-send-express-modal');
+      const dialogOpen = dialog && dialog.style.display !== 'none';
+
+      if (!dialogOpen) {
+        updateExpressStatus('📮 正在查找"同步物流状态"按钮...', 'info');
+
+        // 1. 点击"同步物流状态(并发送取件码)"按钮
+        const btn = document.querySelector('a.sendExpressPrivacy');
+        if (!btn) {
+          throw new Error('未找到"同步物流状态(并发送取件码)"按钮');
+        }
+        btn.click();
+        console.log('[同步物流] 已点击"同步物流状态"按钮，等待弹窗...');
+
+        // 2. 等5秒后等弹窗出现
+        await new Promise(r => setTimeout(r, 5000));
+        dialog = await waitForExpressDialog();
+        console.log('[同步物流] 弹窗已出现');
+
+        // 3. 点击"开始发送"
+        const startBtn = dialog.querySelector('button.zeromodal-btn-primary');
+        if (!startBtn) throw new Error('未找到"开始发送"按钮');
+        startBtn.click();
+        console.log('[同步物流] 已点击"开始发送"，等待执行完成...');
+      } else {
+        console.log('[同步物流] 弹窗已打开，直接等待完成...');
+      }
+
+      updateExpressStatus('📮 发送中，请稍候...', 'info');
+
+      // 4. 等待完成（弹窗已打开时不等待，直接轮询）
+      await waitForExpressComplete(dialog, 300000, dialogOpen ? 0 : 5000);
+      console.log('%c[同步物流] 发送完成', 'color:#67c23a;font-weight:bold;');
+      updateExpressStatus('✅ 发送完成，5秒后关闭弹窗...', 'success');
+
+      // 5. 等5秒再关闭
+      await new Promise(r => setTimeout(r, 5000));
+      const closeBtn = dialog.querySelector('button.zeromodal-btn-default');
+      if (closeBtn) {
+        closeBtn.click();
+        console.log('[同步物流] 已关闭弹窗');
+      }
+
+      const now = new Date();
+      const timeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+      updateExpressStatus(`✅ 同步物流完成（${timeStr}）`, 'success');
+
+      // 记录本次执行时间
+      chrome.storage.local.get('jd_settings', (result) => {
+        const s = result.jd_settings || {};
+        s.lastExpressTime = Date.now();
+        chrome.storage.local.set({ 'jd_settings': s });
+      });
+    } catch (e) {
+      console.error('[同步物流] 执行失败:', e);
+      updateExpressStatus(`❌ 同步物流失败: ${e.message}`, 'error');
+      // 失败时不强制关闭弹窗（可能正在发送中），等待下次调度
+    } finally {
+      isSyncingExpress = false;
+    }
+  }
+
+  /**
+   * 递归调度下一次同步物流
+   */
+  function scheduleExpressNext() {
+    chrome.storage.local.get('jd_settings', (result) => {
+      const settings = result.jd_settings || {};
+      if (!settings.autoSyncExpress) return;
+
+      const minutes = Math.max(1, Math.min(1440, settings.autoSyncExpressInterval || 120));
+      const intervalMs = minutes * 60 * 1000;
+      const delay = calcNextDelay(settings.lastExpressTime, settings, intervalMs);
+
+      const nextTime = new Date(Date.now() + delay);
+      const nextStr = `${String(nextTime.getHours()).padStart(2,'0')}:${String(nextTime.getMinutes()).padStart(2,'0')}`;
+      const rangeText = settings.autoShipTimeRange
+        ? `，时段 ${settings.autoShipTimeStart}~${settings.autoShipTimeEnd}`
+        : '';
+      updateExpressStatus(`📮 每${minutes}分钟，下次 ${nextStr}${rangeText}`, 'info');
+
+      expressTimer = setTimeout(async () => {
+        await runSyncExpressOnce();
+        scheduleExpressNext();
+      }, delay);
+    });
+  }
+
+  /**
+   * 启动/重启定时同步物流
+   */
+  function setupExpressTimer() {
+    if (!isExpressPage()) return;
+    if (expressTimer) {
+      clearTimeout(expressTimer);
+      expressTimer = null;
+    }
+    if (expressFirstTimer) {
+      clearTimeout(expressFirstTimer);
+      expressFirstTimer = null;
+    }
+
+    chrome.storage.local.get('jd_settings', (result) => {
+      const settings = result.jd_settings || {};
+      if (!settings.autoSyncExpress) {
+        console.log('[同步物流] 未开启');
+        updateExpressStatus('📮 定时同步物流未开启', 'info');
+        return;
+      }
+      const minutes = Math.max(1, Math.min(1440, settings.autoSyncExpressInterval || 120));
+      const intervalMs = minutes * 60 * 1000;
+      const delay = calcNextDelay(settings.lastExpressTime, settings, intervalMs);
+
+      const nextTime = new Date(Date.now() + delay);
+      const nextStr = `${String(nextTime.getHours()).padStart(2,'0')}:${String(nextTime.getMinutes()).padStart(2,'0')}`;
+      const rangeText = settings.autoShipTimeRange
+        ? `，时段 ${settings.autoShipTimeStart}~${settings.autoShipTimeEnd}`
+        : '';
+      console.log(`%c[同步物流] 已开启，每${minutes}分钟执行${rangeText}，下次：${nextStr}`, 'color:#e6a23c;font-weight:bold;');
+      updateExpressStatus(`📮 每${minutes}分钟，下次 ${nextStr}${rangeText}`, 'info');
+
+      expressFirstTimer = setTimeout(async () => {
+        await runSyncExpressOnce();
+        scheduleExpressNext();
       }, delay);
     });
   }
@@ -1524,9 +1784,19 @@
         });
         return true;
 
+      case 'RUN_SYNC_EXPRESS':
+        // 手动触发一次同步物流
+        runSyncExpressOnce().then(() => {
+          sendResponse({ success: true });
+        }).catch(e => {
+          sendResponse({ success: false, message: e.message });
+        });
+        return true;
+
       case 'SETTINGS_UPDATED':
         // 设置已更新，重新设置定时器
-        setupAutoShipTimer(false);
+        setupAutoShipTimer();
+        if (isExpressPage()) setupExpressTimer();
         break;
     }
   });
@@ -1541,15 +1811,47 @@
         console.log('[风险检测] 已退出登录，清除页面风险标记');
       }
     }
-    // 设置变化时重新设置定时发货
+    // 设置变化时重新设置定时器
     if (area === 'local' && changes.jd_settings) {
       setupAutoShipTimer();
+      if (isExpressPage()) setupExpressTimer();
     }
   });
 
   // ==================== 初始化 ====================
   
   async function init() {
+    // 京巴士物流状态页
+    if (isExpressPage()) {
+      if (document.readyState === 'loading') {
+        await new Promise(resolve => {
+          document.addEventListener('DOMContentLoaded', resolve);
+        });
+      }
+
+      // 等待工具栏按钮出现，确认当前frame是正确的页面（避免多frame重复启动）
+      let btn = null;
+      try {
+        btn = await waitForElement('a.sendExpressPrivacy', 10000);
+      } catch (e) {
+        console.log('[京巴士物流同步] 当前frame未找到同步按钮，不启动');
+        return;
+      }
+      if (!btn) return;
+
+      console.log('%c[京巴士物流同步助手] 已加载', 'color: #e6a23c; font-weight: bold;');
+
+      setTimeout(() => {
+        createFloatingPanel();
+        floatingPanel.classList.add('express-mode');
+        document.getElementById('panel-title').textContent = '📮 京巴士物流同步';
+        floatingPanel.querySelectorAll('.jd-only').forEach(el => el.style.display = 'none');
+        floatingPanel.querySelectorAll('.express-only').forEach(el => el.style.display = '');
+        setupExpressTimer();
+      }, 1500);
+      return;
+    }
+
     if (!isTargetPage()) {
       console.log('[京东订单抓取] 当前不是订单页面');
       return;
@@ -1557,7 +1859,7 @@
 
     console.log('%c[京东订单抓取助手] 已加载', 'color: #e1251b; font-weight: bold;');
     console.log('选择器配置:', SELECTORS);
-    
+
     if (document.readyState === 'loading') {
       await new Promise(resolve => {
         document.addEventListener('DOMContentLoaded', resolve);

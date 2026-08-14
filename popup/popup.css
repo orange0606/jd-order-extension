@@ -416,7 +416,27 @@ body {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin-bottom: 20px;
+  margin-bottom: 0;
+  max-height: 440px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+#settings-view.active {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 滚动条样式 */
+.settings-list::-webkit-scrollbar {
+  width: 6px;
+}
+.settings-list::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+.settings-list::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .settings-group-title {

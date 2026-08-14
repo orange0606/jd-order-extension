@@ -15,6 +15,9 @@ const ZHICHACHA_CONFIG = {
   // 搜索恶人页面地址
   searchBadGuyUrl: 'http://81.71.9.134/zhichacha/#/villainsSearch',
 
+  // 京巴士订单状态页（同步物流状态并发送取件码）
+  jbsExpressUrl: 'https://pay.jingbashi.com/back.php/order/status?ref=addtabs',
+
   // 举报页面地址
   reportUrl: 'http://81.71.9.134/zhichacha/#/reportManage?keyword={keyword}&tab=all',
 
@@ -40,7 +43,11 @@ const ZHICHACHA_CONFIG = {
   // 定时发货时间范围限制（勾选后仅在该时段内执行，格式 HH:MM）
   autoShipTimeRangeEnabled: false,
   autoShipTimeStart: '07:00',
-  autoShipTimeEnd: '22:00'
+  autoShipTimeEnd: '22:00',
+
+  // 定时自动同步物流状态并发送取件码（京巴士页面，默认关闭）
+  autoSyncExpressEnabled: false,
+  autoSyncExpressInterval: 120  // 默认2小时
 };
 
 // 兼容CommonJS和浏览器全局

@@ -6,7 +6,7 @@
   position: fixed;
   top: 100px;
   right: 20px;
-  width: 280px;
+  width: 310px;
   background: #ffffff;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
@@ -39,6 +39,11 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 /* 标题栏右侧按钮组 */
@@ -46,6 +51,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
+  flex-shrink: 0;
 }
 
 /* 标题栏图标按钮 */

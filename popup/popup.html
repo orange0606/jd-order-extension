@@ -142,10 +142,29 @@
           <input type="number" id="setting-auto-ship-interval" min="1" max="720" value="30" style="width:70px;padding:6px 8px;border:1px solid #dcdfe6;border-radius:4px;text-align:center;font-size:14px;">
         </div>
 
+        <div class="setting-item">
+          <div class="setting-info">
+            <div class="setting-name">自动同步物流状态</div>
+            <div class="setting-desc">京巴士订单状态页自动点击"同步物流状态(并发送取件码)"，共用下方时段</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="setting-auto-sync-express">
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-item" id="sync-express-interval-row" style="display:none;">
+          <div class="setting-info">
+            <div class="setting-name">执行间隔（分钟）</div>
+            <div class="setting-desc">每隔多少分钟自动同步一次物流状态</div>
+          </div>
+          <input type="number" id="setting-sync-express-interval" min="1" max="1440" value="120" style="width:70px;padding:6px 8px;border:1px solid #dcdfe6;border-radius:4px;text-align:center;font-size:14px;">
+        </div>
+
         <div class="setting-item" id="auto-ship-timerange-row" style="display:none;">
           <div class="setting-info">
             <div class="setting-name">限制执行时间段</div>
-            <div class="setting-desc" id="auto-ship-timerange-desc">勾选后仅在指定时间段内自动执行（时间在 config.js 配置）</div>
+            <div class="setting-desc" id="auto-ship-timerange-desc">勾选后仅在指定时间段内自动执行</div>
           </div>
           <label class="switch">
             <input type="checkbox" id="setting-auto-ship-timerange">
