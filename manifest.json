@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "京东订单数据抓取助手",
+  "version": "1.0.0",
+  "description": "自动检测京东商家后台订单页面，抓取订单数据并同步到智查查风控系统",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "cookies",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://shop.jd.com/*",
+    "https://*.jd.com/*",
+    "http://localhost:3000/*",
+    "http://127.0.0.1:3000/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://shop.jd.com/jdm/trade/orders/order-list*",
+        "https://shop.jd.com/jdm/trade/orders/*"
+      ],
+      "js": ["config.js", "content/content.js"],
+      "css": ["content/content.css"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "京东订单抓取助手"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["content/*"],
+      "matches": ["https://shop.jd.com/*"]
+    }
+  ]
+}

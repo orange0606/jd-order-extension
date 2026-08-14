@@ -1,0 +1,372 @@
+/**
+ * 京东订单抓取助手 - 悬浮面板样式
+ */
+
+#jd-order-scraper-panel {
+  position: fixed;
+  top: 100px;
+  right: 20px;
+  width: 280px;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  z-index: 999999;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  font-size: 14px;
+  color: #333;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  border: 1px solid #e8e8e8;
+}
+
+#jd-order-scraper-panel.minimized .scraper-body {
+  display: none;
+}
+
+#jd-order-scraper-panel .scraper-header {
+  background: linear-gradient(135deg, #e1251b 0%, #ff4d4f 100%);
+  color: white;
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: move;
+}
+
+#jd-order-scraper-panel .scraper-title {
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 标题栏右侧按钮组 */
+#jd-order-scraper-panel .header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 标题栏图标按钮 */
+#jd-order-scraper-panel .header-icon-btn {
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.2s;
+}
+
+#jd-order-scraper-panel .header-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+/* 最小化按钮 */
+#jd-order-scraper-panel .scraper-minimize {
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-weight: bold;
+  transition: background 0.2s;
+}
+
+#jd-order-scraper-panel .scraper-minimize:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+/* 风险订单数量徽章 */
+#jd-order-scraper-panel .risk-badge {
+  background: #fff3cd;
+  color: #d48806;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  animation: pulse 1.5s infinite;
+}
+
+/* 未登录警告 */
+#jd-order-scraper-panel .login-warning {
+  background: #fff2f0;
+  border: 1px solid #ffccc7;
+  color: #cf1322;
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+#jd-order-scraper-panel .scraper-body {
+  padding: 16px;
+}
+
+#jd-order-scraper-panel .scraper-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #f5f7fa;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+#jd-order-scraper-panel .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+#jd-order-scraper-panel .status-dot.status-info {
+  background: #1890ff;
+}
+
+#jd-order-scraper-panel .status-dot.status-success {
+  background: #52c41a;
+}
+
+#jd-order-scraper-panel .status-dot.status-warning {
+  background: #faad14;
+}
+
+#jd-order-scraper-panel .status-dot.status-error {
+  background: #ff4d4f;
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+#jd-order-scraper-panel .scraper-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+#jd-order-scraper-panel .scraper-btn {
+  padding: 10px 16px;
+  border: 1px solid #d9d9d9;
+  background: white;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+#jd-order-scraper-panel .scraper-btn:hover {
+  border-color: #e1251b;
+  color: #e1251b;
+}
+
+#jd-order-scraper-panel .scraper-btn-primary {
+  background: linear-gradient(135deg, #e1251b 0%, #ff4d4f 100%);
+  color: white;
+  border: none;
+  font-weight: 500;
+}
+
+#jd-order-scraper-panel .scraper-btn-primary:hover {
+  background: linear-gradient(135deg, #c01e15 0%, #e84446 100%);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(225, 37, 27, 0.3);
+}
+
+#jd-order-scraper-panel .scraper-stats {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+}
+
+#jd-order-scraper-panel .stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+#jd-order-scraper-panel .stat-label {
+  font-size: 12px;
+  color: #999;
+}
+
+#jd-order-scraper-panel .stat-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: #e1251b;
+}
+
+/* 拖拽时的样式 */
+#jd-order-scraper-panel.dragging {
+  opacity: 0.8;
+  transform: scale(1.02);
+}
+
+/* 高亮被抓取的订单行 */
+.jd-order-highlight {
+  outline: 2px dashed #52c41a !important;
+  outline-offset: 2px;
+  background: rgba(82, 196, 26, 0.05) !important;
+}
+
+/* ==================== 智查查风险提示样式 (orange-zcc- 前缀) ==================== */
+
+/* 风险提示条 */
+.orange-zcc-risk-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  flex-wrap: wrap;
+}
+
+.orange-zcc-risk-bar.orange-zcc-risk-high {
+  background: linear-gradient(90deg, #fff1f0, #fff7f7);
+  border: 1px solid #ffa39e;
+  color: #cf1322;
+}
+
+.orange-zcc-risk-bar.orange-zcc-risk-medium {
+  background: linear-gradient(90deg, #fffbe6, #fffdf0);
+  border: 1px solid #ffe58f;
+  color: #d48806;
+}
+
+.orange-zcc-risk-bar.orange-zcc-risk-low {
+  background: linear-gradient(90deg, #f0f5ff, #f7faff);
+  border: 1px solid #adc6ff;
+  color: #2f54eb;
+}
+
+.orange-zcc-risk-bar.orange-zcc-risk-none {
+  background: linear-gradient(90deg, #f6ffed, #fafff8);
+  border: 1px solid #b7eb8f;
+  color: #389e0d;
+}
+
+.orange-zcc-risk-icon {
+  font-size: 16px;
+}
+
+.orange-zcc-risk-level {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.orange-zcc-risk-info-item {
+  font-size: 12px;
+  font-weight: normal;
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 4px;
+  white-space: nowrap;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+a.orange-zcc-risk-link:hover {
+  background: rgba(255, 255, 255, 0.9);
+  text-decoration: underline;
+}
+
+.orange-zcc-risk-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.orange-zcc-risk-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: normal;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.orange-zcc-risk-high .orange-zcc-risk-tag {
+  background: rgba(207, 19, 34, 0.08);
+}
+
+.orange-zcc-risk-medium .orange-zcc-risk-tag {
+  background: rgba(212, 136, 6, 0.08);
+}
+
+.orange-zcc-risk-low .orange-zcc-risk-tag {
+  background: rgba(47, 84, 235, 0.08);
+}
+
+/* 提示条放在卡片底部，加一点上边距 */
+.orange-zcc-risk-bar {
+  margin-top: 10px;
+  margin-bottom: 0;
+}
+
+/* 清除按钮样式 */
+.scraper-btn.scraper-btn-secondary {
+  background: #fff;
+  color: #606266;
+  border: 1px solid #dcdfe6;
+}
+
+.scraper-btn.scraper-btn-secondary:hover {
+  color: #409eff;
+  border-color: #c6e2ff;
+  background: #ecf5ff;
+}
+
+/* 标题栏风险数字徽章 */
+.risk-badge {
+  display: none;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.25);
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-left: 8px;
+  animation: riskBounce 0.5s ease;
+}
+
+@keyframes riskBounce {
+  0% { transform: scale(0); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}

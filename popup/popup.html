@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>京东订单抓取助手</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- 头部 -->
+    <header class="popup-header">
+      <div class="logo">
+        <span class="logo-icon">📦</span>
+        <span class="logo-text">订单抓取助手</span>
+      </div>
+      <div class="header-actions">
+        <button class="icon-btn" id="btn-settings" title="设置">⚙️</button>
+      </div>
+    </header>
+
+    <!-- 登录界面 -->
+    <div id="login-view" class="view active">
+      <div class="login-welcome">
+        <div class="welcome-icon">🔐</div>
+        <h3>登录智查查</h3>
+        <p>登录后可自动同步订单数据到风控系统</p>
+      </div>
+      
+      <form id="login-form" class="login-form">
+        <div class="form-group">
+          <label>账号</label>
+          <input type="text" id="username" placeholder="请输入账号" autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label>密码</label>
+          <input type="password" id="password" placeholder="请输入密码" autocomplete="current-password">
+        </div>
+        
+        <div id="login-error" class="error-message"></div>
+        
+        <button type="submit" class="btn btn-primary btn-block" id="btn-login">
+          登录
+        </button>
+      </form>
+    </div>
+
+    <!-- 主界面 -->
+    <div id="main-view" class="view">
+      <!-- 用户信息 -->
+      <div class="user-bar">
+        <div class="user-avatar">👤</div>
+        <div class="user-info">
+          <div class="user-name" id="user-name">用户</div>
+          <div class="user-status">
+            <span class="status-dot online"></span>
+            已连接
+          </div>
+        </div>
+        <button class="btn-text" id="btn-logout">退出</button>
+      </div>
+
+      <!-- 状态卡片 -->
+      <div class="status-card">
+        <div class="page-status" id="page-status">
+          <span class="status-dot" id="page-status-dot"></span>
+          <span id="page-status-text">检测页面中...</span>
+        </div>
+      </div>
+
+      <!-- 已绑定店铺列表 -->
+      <div class="shops-section">
+        <div class="section-title">
+          <span>🏪 我的店铺</span>
+          <span class="shop-count" id="shop-count">0</span>
+        </div>
+        <div class="shop-list" id="shop-list">
+          <div class="shop-empty">加载中...</div>
+        </div>
+      </div>
+
+      <!-- 操作按钮 -->
+      <div class="action-section">
+        <button class="btn btn-block" id="btn-admin">
+          🌐 打开后台管理
+        </button>
+        <button class="btn btn-block" id="btn-search-bad">
+          🔍 搜索恶人
+        </button>
+      </div>
+    </div>
+
+    <!-- 设置界面 -->
+    <div id="settings-view" class="view">
+      <div class="settings-header">
+        <button class="icon-btn" id="btn-back">←</button>
+        <h3>设置</h3>
+        <button class="icon-btn" id="btn-save-settings" style="font-size:14px;color:#667eea;font-weight:600;">保存</button>
+      </div>
+      
+      <div class="settings-list">
+        <div class="setting-item">
+          <div class="setting-info">
+            <div class="setting-name">自动同步</div>
+            <div class="setting-desc">进入订单页10秒后自动抓取同步</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="setting-auto-sync" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        
+        <div class="setting-item">
+          <div class="setting-info">
+            <div class="setting-name">抓取通知</div>
+            <div class="setting-desc">完成抓取后弹出系统通知</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="setting-notification" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="settings-group-title">京巴士自动化设置</div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <div class="setting-name">定时查单发货</div>
+            <div class="setting-desc">自动点击"批量查单发货"，勾选所有订单出库、快速发货等选项并执行</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="setting-auto-ship">
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-item" id="auto-ship-interval-row" style="display:none;">
+          <div class="setting-info">
+            <div class="setting-name">执行间隔（分钟）</div>
+            <div class="setting-desc">每隔多少分钟自动执行一次查单发货</div>
+          </div>
+          <input type="number" id="setting-auto-ship-interval" min="1" max="720" value="30" style="width:70px;padding:6px 8px;border:1px solid #dcdfe6;border-radius:4px;text-align:center;font-size:14px;">
+        </div>
+
+        <div class="setting-item" id="auto-ship-timerange-row" style="display:none;">
+          <div class="setting-info">
+            <div class="setting-name">限制执行时间段</div>
+            <div class="setting-desc" id="auto-ship-timerange-desc">勾选后仅在指定时间段内自动执行（时间在 config.js 配置）</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="setting-auto-ship-timerange">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- 底部 -->
+    <footer class="popup-footer">
+      <span>v1.0.0 | 智查查风控系统</span>
+    </footer>
+  </div>
+
+  <!-- Toast 提示 -->
+  <div id="toast" class="toast"></div>
+
+  <script src="../config.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
