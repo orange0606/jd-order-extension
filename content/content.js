@@ -274,7 +274,7 @@
       // 已取消、待付款订单直接跳过，不抓取
       const skipStatus = ['已取消', '待付款'];
       if (order.orderStatus && skipStatus.some(s => order.orderStatus.includes(s))) {
-        console.log(`[订单跳过] ${order.orderId} 状态为"${order.orderStatus}"，跳过抓取`);
+        // console.log(`[订单跳过] ${order.orderId} 状态为"${order.orderStatus}"，跳过抓取`);
         return null;
       }
 
@@ -289,13 +289,13 @@
       });
 
       // 调试日志
-      console.log('[订单解析]', order.orderId, {
-        状态: order.orderStatus,
-        金额: order.totalAmount,
-        商品数: order.products.length,
-        买家: order.buyerPin
-      });
-      console.log('[订单解析] order', order);
+      // console.log('[订单解析]', order.orderId, {
+      //   状态: order.orderStatus,
+      //   金额: order.totalAmount,
+      //   商品数: order.products.length,
+      //   买家: order.buyerPin
+      // });
+      // console.log('[订单解析] order', order);
       
       return order;
     } catch (e) {
@@ -311,10 +311,8 @@
   function enrichOrdersWithRiskData(orders) {
     // 先查找页面上所有的风险栏
     const riskBars = document.querySelectorAll('.zgcc-result-bar-row');
-    console.log(`[风险匹配] 页面找到 ${riskBars.length} 个智查查风险栏`);
 
     if (riskBars.length === 0) {
-      console.log('[风险匹配] 未找到智查查风险栏，可能插件未运行或未查询');
       return;
     }
 
@@ -391,18 +389,10 @@
             order.riskLevel = 'high';
           }
         }
-
-        console.log(`[风险匹配] ✅ ${order.orderId}`, {
-          地址: order.riskFullAddress,
-          手机: order.riskFullMobile,
-          建议: order.riskAdvise
-        });
       } catch (e) {
-        console.error(`[风险匹配] 解析订单 ${order.orderId} 风险栏失败:`, e);
+        // 静默忽略单条解析失败
       }
     });
-
-    console.log(`[风险匹配] 共匹配到 ${matchedCount}/${orders.length} 条订单的风险数据`);
   }
 
   /**
@@ -484,7 +474,7 @@
       shopInfo = parseShopInfoFromDom();
 
       if (shopInfo.shopId && shopInfo.shopName) {
-        console.log(`[店铺信息] 第${tryCount}次获取成功:`, shopInfo);
+        // console.log(`[店铺信息] 第${tryCount}次获取成功:`, shopInfo);
         // 仅在店铺ID变化时写入 storage，避免频繁写入覆盖设置
         if (shopInfo.shopId !== _lastSavedShopId) {
           _lastSavedShopId = shopInfo.shopId;
@@ -511,7 +501,7 @@
       await new Promise(r => setTimeout(r, 300));
     }
 
-    console.log(`[店铺信息] 最终获取结果:`, shopInfo);
+    // console.log(`[店铺信息] 最终获取结果:`, shopInfo);
     return shopInfo;
   }
 
@@ -548,13 +538,13 @@
       };
     });
 
-    console.log(`[格式转换] 已转换为接口格式，共 ${list.length} 条`);
-    console.table(list.map(item => ({
-      order_no: item.order_no,
-      金额: item.pay_amount,
-      手机: item.buyer_phone,
-      地址: item.buyer_address?.substring(0, 25)
-    })));
+    // console.log(`[格式转换] 已转换为接口格式，共 ${list.length} 条`);
+    // console.table(list.map(item => ({
+    //   order_no: item.order_no,
+    //   金额: item.pay_amount,
+    //   手机: item.buyer_phone,
+    //   地址: item.buyer_address?.substring(0, 25)
+    // })));
 
     return list;
   }
@@ -656,15 +646,14 @@
       }, 500);
 
       // 6. 打印转换后的接口数据，方便调试
-      console.log('%c========== 转换完成，准备提交到后端的数据 ==========', 'color: #e1251b; font-weight: bold; font-size: 14px;');
-      console.log('请求体 { list: [...] }:');
-      // console.log(JSON.stringify({ list: importList }, null, 2));
-      console.table(importList);
-      console.log('importList:', importList);
-      console.log('%c==================================================', 'color: #e1251b; font-weight: bold;');
+      // console.log('%c========== 转换完成，准备提交到后端的数据 ==========', 'color: #e1251b; font-weight: bold; font-size: 14px;');
+      // console.log('请求体 { list: [...] }:');
+      // console.table(importList);
+      // console.log('importList:', importList);
+      // console.log('%c==================================================', 'color: #e1251b; font-weight: bold;');
 
       // 7. 通知后台同步（发送接口格式的数据）
-      console.log('[Content] 正在发送ORDERS_SCraped消息到后台...');
+      // console.log('[Content] 正在发送ORDERS_SCraped消息到后台...');
       chrome.runtime.sendMessage({
         type: 'ORDERS_SCraped',
         payload: {
@@ -677,9 +666,10 @@
         if (chrome.runtime.lastError) {
           console.error('[Content] 发送消息失败:', chrome.runtime.lastError.message);
           updateStatus('❌ 与后台通信失败，请刷新扩展', 'error');
-        } else {
-          console.log('[Content] 后台已收到消息，响应:', response);
         }
+        // else {
+        //   console.log('[Content] 后台已收到消息，响应:', response);
+        // }
       });
 
       return { orders, importList };
@@ -760,7 +750,7 @@
 
     // 立即查单发货按钮（标题栏）
     document.getElementById('btn-header-ship').addEventListener('click', () => {
-      runBatchShipOnce();
+      runBatchShipOnce(true);
     });
 
     // 跳转京巴士同步物流页
@@ -770,7 +760,7 @@
     });
 
     // 立即同步物流按钮（标题栏和内容区）
-    const handleExpressClick = () => runSyncExpressOnce();
+    const handleExpressClick = () => runSyncExpressOnce(true);
     document.getElementById('btn-header-express').addEventListener('click', handleExpressClick);
     document.getElementById('btn-sync-express').addEventListener('click', handleExpressClick);
 
@@ -989,7 +979,6 @@
   // ==================== 批量风险检测 ====================
 
   async function batchRiskCheck(orders) {
-    console.log('[风险检测] 开始检测，订单数：', orders.length);
     try {
       // 获取当前店铺ID
       let shopId = '';
@@ -997,9 +986,8 @@
         const shopInfo = await getShopInfo();
         shopId = shopInfo.shopId || '';
       } catch(e) {
-        console.log('[风险检测] 获取店铺ID失败，使用空值', e);
+        // 获取店铺ID失败，使用空值
       }
-      console.log('[风险检测] 当前店铺ID：', shopId);
 
       // 构造请求体
       const checkList = orders.map(o => ({
@@ -1009,10 +997,7 @@
         buyerAddress: o.riskFullAddress || o.address || o.buyerAddress || ''
       })).filter(i => i.buyerAccount || i.buyerAddress);
 
-      console.log('[风险检测] 待检测列表：', checkList);
-
       if (checkList.length === 0) {
-        console.log('[风险检测] 没有需要检测的账号或地址');
         return;
       }
 
@@ -1024,10 +1009,7 @@
         payload: checkList
       });
 
-      console.log('[风险检测] background返回：', response);
-
       if (!response || !response.success) {
-        console.error('[风险检测] 请求失败:', response?.message);
         return;
       }
 
@@ -1063,16 +1045,6 @@
 
       // 在页面订单上标记风险
       renderRiskToPage(results);
-
-      console.log('%c========== 风险检测结果 ==========', 'color: #f56c6c; font-weight: bold;');
-      console.table(results.map(r => ({
-        订单号: r.orderNo,
-        账号: r.buyerAccount,
-        风险: r.riskLevelText,
-        举报次数: r.accountReportCount + r.addressReportCount,
-        跨店: r.crossShopCount,
-        标签: r.tags.join(', ')
-      })));
 
       // 5秒后自动折叠面板
       setTimeout(() => {
@@ -1176,6 +1148,7 @@
   let expressTimer = null;
   let expressFirstTimer = null;
   let isSyncingExpress = false;
+  let expressFrameReady = false; // 当前frame是否包含京巴士同步按钮（多frame环境下只在正确的frame运行）
 
   /**
    * 通过文字内容查找"批量查单发货"按钮
@@ -1224,53 +1197,66 @@
   }
 
   /**
-   * 等待发货完成：每10秒轮询一次，检查"开始"按钮是否消失（变成只剩"关闭"按钮）
-   */
-  /**
-   * 等待发货完成：每3秒轮询一次
-   * 以内容出现"发货完成"为完成标志，不依赖按钮消失（点击开始后按钮可能立即被移除）
+   * 等待发货完成：每5秒轮询一次
+   * 检测 .jbs-batch-express-log-status 的 data-state 和文字
+   * data-state 为 warning/success/error 且文字含"完成"时判定结束
    */
   function waitForShipComplete(dialog, timeout = 300000) {
     return new Promise((resolve, reject) => {
       const start = Date.now();
-      let lastLine = '';
-      let seenPaused = false; // 是否见过"暂停"状态（确认已进入执行）
+      let lastProgress = '';
+      let hasStarted = false;
+      let pollCount = 0;
       const check = () => {
-        const content = dialog.querySelector('.fo-layer-content');
-        const text = content ? content.textContent : '';
-        const stopBtn = dialog.querySelector('.fo-layer-btnstop');
-        const btnText = stopBtn ? stopBtn.textContent.trim() : '';
+        pollCount++;
 
-        // 记录是否进入过执行状态（按钮变"暂停"）
-        if (btnText === '暂停') seenPaused = true;
-
-        // 完成条件1：内容出现"发货完成"
-        if (text.includes('发货完成')) {
-          resolve('done');
-          return;
-        }
-        // 完成条件2：见过"暂停"后按钮变回"关闭"
-        if (seenPaused && btnText === '关闭') {
-          resolve('done');
+        // 容错1：弹窗已被关闭或移除
+        if (!document.getElementById('fo-layer') || dialog.style.display === 'none') {
+          reject(new Error('查单发货弹窗被关闭，已取消本次执行'));
           return;
         }
 
-        // 更新面板进度（取最后一行非空文字）
-        const lines = text.split('\n').map(s => s.trim()).filter(Boolean);
-        const curLine = lines[lines.length - 1] || '';
-        if (curLine && curLine !== lastLine) {
-          lastLine = curLine;
-          const short = curLine.length > 30 ? curLine.slice(0, 30) + '...' : curLine;
-          updateShipStatus(`🚚 ${short}`, 'info');
+        const statusEl = dialog.querySelector('.jbs-batch-express-log-status');
+        const state = statusEl ? (statusEl.getAttribute('data-state') || '') : '';
+        const statusText = statusEl ? statusEl.textContent.trim() : '';
+
+        // 容错2：状态元素一直找不到（弹窗结构异常）
+        if (pollCount > 2 && !statusEl) {
+          reject(new Error('未找到执行状态元素，弹窗结构可能已变化'));
+          return;
+        }
+
+        // 容错3：状态为 error
+        if (state === 'error' || statusText.includes('失败') && statusText.includes('异常')) {
+          reject(new Error(`执行异常：${statusText || '未知错误'}`));
+          return;
+        }
+
+        // 进度信息
+        const progressEl = dialog.querySelector('.jbs-batch-express-log-progress');
+        const progressText = progressEl ? progressEl.textContent.replace(/\s+/g, ' ').trim() : '';
+
+        if (state && state !== 'idle') hasStarted = true;
+
+        // 完成判断：状态文字含"完成"
+        if (hasStarted && (statusText.includes('完成') || statusText.includes('完毕'))) {
+          resolve(statusText);
+          return;
+        }
+
+        // 更新面板进度
+        const display = statusText ? `${statusText} ${progressText}`.trim() : progressText;
+        if (display && display !== lastProgress) {
+          lastProgress = display;
+          updateShipStatus(`🚚 ${display}`, 'info');
         }
 
         if (Date.now() - start > timeout) {
-          reject(new Error('查单发货执行超时（5分钟）'));
+          reject(new Error('查单发货执行超时（5分钟），已取消本次执行'));
         } else {
-          setTimeout(check, 3000);
+          setTimeout(check, 5000);
         }
       };
-      // 点击后先等5秒再开始轮询，避免初始状态误判
       setTimeout(check, 5000);
     });
   }
@@ -1298,17 +1284,29 @@
   }
 
   /**
+   * 检查插件上下文是否有效（插件刷新/更新后旧content script会失效）
+   */
+  function checkExtensionContext() {
+    if (!chrome.runtime?.id) {
+      updateShipStatus('⚠️ 插件已更新，请刷新页面后再使用', 'error');
+      return false;
+    }
+    return true;
+  }
+
+  /**
    * 执行一次批量查单发货
    */
-  async function runBatchShipOnce() {
+  async function runBatchShipOnce(manual = false) {
+    if (!checkExtensionContext()) return;
     if (isAutoShipping) {
       console.log('[定时发货] 上一次尚未结束，跳过本次');
       return;
     }
 
-    // 时间范围判断
+    // 时间范围判断（手动触发不受限制）
     const settings = await new Promise(r => chrome.storage.local.get('jd_settings', s => r(s.jd_settings || {})));
-    if (!isInShipTimeRange(settings)) {
+    if (!manual && !isInShipTimeRange(settings)) {
       console.log(`[定时发货] 当前时间不在 ${settings.autoShipTimeStart}~${settings.autoShipTimeEnd} 范围内，跳过`);
       return;
     }
@@ -1316,6 +1314,18 @@
     isAutoShipping = true;
     try {
       console.log('%c[定时发货] 开始执行批量查单发货', 'color:#67c23a;font-weight:bold;');
+
+      // 0. 先检测并关闭上一次残留的弹窗
+      const existDialog = document.getElementById('fo-layer');
+      if (existDialog && existDialog.style.display !== 'none') {
+        const closeBtn = existDialog.querySelector('.fo-layer-btnstop');
+        if (closeBtn) {
+          console.log('[定时发货] 检测到上一次残留弹窗，先关闭');
+          closeBtn.click();
+          await new Promise(r => setTimeout(r, 1500));
+        }
+      }
+
       updateShipStatus('🚚 正在查找"批量查单发货"按钮...', 'info');
 
       // 1. 查找并点击"批量查单发货"按钮
@@ -1333,7 +1343,8 @@
       // 3. 勾选选项
       // 所有订单出库
       const radioAll = document.getElementById('shipmentstype0');
-      if (radioAll && !radioAll.checked) radioAll.click();
+      if (!radioAll) throw new Error('未找到"所有订单出库"选项，弹窗结构可能已变化');
+      if (!radioAll.checked) radioAll.click();
 
       // 发货失败自动备注（默认已勾，确保勾上）
       const cbRemark = document.getElementById('sendErrorRemarks');
@@ -1345,7 +1356,8 @@
 
       // 快速发货(有单号就发货)
       const radioFast = document.getElementById('shippingtype0');
-      if (radioFast && !radioFast.checked) radioFast.click();
+      if (!radioFast) throw new Error('未找到"快速发货"选项，弹窗结构可能已变化');
+      if (!radioFast.checked) radioFast.click();
 
       console.log('[定时发货] 选项已勾选：所有订单出库/失败备注/后台单号/快速发货');
 
@@ -1384,13 +1396,8 @@
       });
     } catch (e) {
       console.error('[定时发货] 执行失败:', e);
-      updateShipStatus(`❌ 查单发货失败: ${e.message}`, 'error');
-      // 失败时尝试关闭弹窗
-      const dialog = document.getElementById('fo-layer');
-      if (dialog) {
-        const closeBtn = dialog.querySelector('.fo-layer-btnstop');
-        if (closeBtn) closeBtn.click();
-      }
+      updateShipStatus(`❌ ${e.message}，等待下次执行`, 'error');
+      // 失败时不强制关闭弹窗，保留现场让用户查看；仅当弹窗不存在时无需处理
     } finally {
       isAutoShipping = false;
     }
@@ -1581,15 +1588,21 @@
   /**
    * 执行一次同步物流状态（并发送取件码）
    */
-  async function runSyncExpressOnce() {
+  async function runSyncExpressOnce(manual = false) {
+    if (!checkExtensionContext()) return;
     if (isSyncingExpress) {
       console.log('[同步物流] 上一次尚未结束，跳过本次');
       return;
     }
+    // 多frame环境下，只有包含同步按钮的frame才执行
+    if (!expressFrameReady && !document.querySelector('a.sendExpressPrivacy')) {
+      console.log('[同步物流] 当前frame无同步按钮，跳过');
+      return;
+    }
 
-    // 时间范围判断（共用查单发货的时段设置）
+    // 时间范围判断（手动触发不受限制）
     const settings = await new Promise(r => chrome.storage.local.get('jd_settings', s => r(s.jd_settings || {})));
-    if (!isInShipTimeRange(settings)) {
+    if (!manual && !isInShipTimeRange(settings)) {
       console.log(`[同步物流] 当前时间不在 ${settings.autoShipTimeStart}~${settings.autoShipTimeEnd} 范围内，跳过`);
       return;
     }
@@ -1691,7 +1704,7 @@
    * 启动/重启定时同步物流
    */
   function setupExpressTimer() {
-    if (!isExpressPage()) return;
+    if (!isExpressPage() || !expressFrameReady) return;
     if (expressTimer) {
       clearTimeout(expressTimer);
       expressTimer = null;
@@ -1777,7 +1790,7 @@
 
       case 'RUN_BATCH_SHIP':
         // 手动触发一次查单发货
-        runBatchShipOnce().then(() => {
+        runBatchShipOnce(true).then(() => {
           sendResponse({ success: true });
         }).catch(e => {
           sendResponse({ success: false, message: e.message });
@@ -1786,7 +1799,7 @@
 
       case 'RUN_SYNC_EXPRESS':
         // 手动触发一次同步物流
-        runSyncExpressOnce().then(() => {
+        runSyncExpressOnce(true).then(() => {
           sendResponse({ success: true });
         }).catch(e => {
           sendResponse({ success: false, message: e.message });
@@ -1839,6 +1852,7 @@
       }
       if (!btn) return;
 
+      expressFrameReady = true;
       console.log('%c[京巴士物流同步助手] 已加载', 'color: #e6a23c; font-weight: bold;');
 
       setTimeout(() => {
@@ -1858,7 +1872,7 @@
     }
 
     console.log('%c[京东订单抓取助手] 已加载', 'color: #e1251b; font-weight: bold;');
-    console.log('选择器配置:', SELECTORS);
+    // console.log('选择器配置:', SELECTORS);
 
     if (document.readyState === 'loading') {
       await new Promise(resolve => {
