@@ -1176,18 +1176,17 @@
   }
 
   /**
-   * 等待弹窗出现
+   * 等待弹窗出现（旧版 fo-layer-old）
    */
-  function waitForShipDialog(timeout = 15000) {
+  function waitForShipDialog(timeout = 5000) {
     return new Promise((resolve, reject) => {
       const start = Date.now();
       const check = () => {
-        const dialog = document.getElementById('fo-layer');
-        // fixed 元素的 offsetParent 为 null，用 display 判断可见性
+        const dialog = document.getElementById('fo-layer-old');
         if (dialog && dialog.style.display !== 'none') {
           resolve(dialog);
         } else if (Date.now() - start > timeout) {
-          reject(new Error('等待查单发货弹窗超时'));
+          reject(new Error('未找到查单发货弹窗，已放弃本次执行'));
         } else {
           setTimeout(check, 500);
         }
@@ -1197,62 +1196,40 @@
   }
 
   /**
-   * 等待发货完成：每5秒轮询一次
-   * 检测 .jbs-batch-express-log-status 的 data-state 和文字
-   * data-state 为 warning/success/error 且文字含"完成"时判定结束
+   * 等待发货完成：每5秒轮询内容是否出现"发货完成"
+   * 超时120秒未完成则直接关闭弹窗，等下次执行
    */
-  function waitForShipComplete(dialog, timeout = 300000) {
+  function waitForShipComplete(dialog, timeout = 120000) {
     return new Promise((resolve, reject) => {
       const start = Date.now();
-      let lastProgress = '';
-      let hasStarted = false;
-      let pollCount = 0;
+      let lastLine = '';
       const check = () => {
-        pollCount++;
-
-        // 容错1：弹窗已被关闭或移除
-        if (!document.getElementById('fo-layer') || dialog.style.display === 'none') {
+        // 容错：弹窗被关闭
+        if (!document.getElementById('fo-layer-old') || dialog.style.display === 'none') {
           reject(new Error('查单发货弹窗被关闭，已取消本次执行'));
           return;
         }
 
-        const statusEl = dialog.querySelector('.jbs-batch-express-log-status');
-        const state = statusEl ? (statusEl.getAttribute('data-state') || '') : '';
-        const statusText = statusEl ? statusEl.textContent.trim() : '';
+        const content = dialog.querySelector('.fo-layer-old-content');
+        const text = content ? content.textContent : '';
 
-        // 容错2：状态元素一直找不到（弹窗结构异常）
-        if (pollCount > 2 && !statusEl) {
-          reject(new Error('未找到执行状态元素，弹窗结构可能已变化'));
+        // 完成判断：内容出现"发货完成"
+        if (text.includes('发货完成')) {
+          resolve('done');
           return;
         }
 
-        // 容错3：状态为 error
-        if (state === 'error' || statusText.includes('失败') && statusText.includes('异常')) {
-          reject(new Error(`执行异常：${statusText || '未知错误'}`));
-          return;
-        }
-
-        // 进度信息
-        const progressEl = dialog.querySelector('.jbs-batch-express-log-progress');
-        const progressText = progressEl ? progressEl.textContent.replace(/\s+/g, ' ').trim() : '';
-
-        if (state && state !== 'idle') hasStarted = true;
-
-        // 完成判断：状态文字含"完成"
-        if (hasStarted && (statusText.includes('完成') || statusText.includes('完毕'))) {
-          resolve(statusText);
-          return;
-        }
-
-        // 更新面板进度
-        const display = statusText ? `${statusText} ${progressText}`.trim() : progressText;
-        if (display && display !== lastProgress) {
-          lastProgress = display;
-          updateShipStatus(`🚚 ${display}`, 'info');
+        // 更新面板进度（取最后一行非空文字）
+        const lines = text.split('\n').map(s => s.trim()).filter(Boolean);
+        const curLine = lines[lines.length - 1] || '';
+        if (curLine && curLine !== lastLine) {
+          lastLine = curLine;
+          const short = curLine.length > 30 ? curLine.slice(0, 30) + '...' : curLine;
+          updateShipStatus(`🚚 ${short}`, 'info');
         }
 
         if (Date.now() - start > timeout) {
-          reject(new Error('查单发货执行超时（5分钟），已取消本次执行'));
+          reject(new Error('查单发货超时（120秒），已关闭弹窗，等待下次执行'));
         } else {
           setTimeout(check, 5000);
         }
@@ -1316,12 +1293,12 @@
       console.log('%c[定时发货] 开始执行批量查单发货', 'color:#67c23a;font-weight:bold;');
 
       // 0. 先检测并关闭上一次残留的弹窗
-      const existDialog = document.getElementById('fo-layer');
+      const existDialog = document.getElementById('fo-layer-old');
       if (existDialog && existDialog.style.display !== 'none') {
-        const closeBtn = existDialog.querySelector('.fo-layer-btnstop');
-        if (closeBtn) {
+        const closeBtn0 = existDialog.querySelector('.fo-layer-old-btnstop');
+        if (closeBtn0) {
           console.log('[定时发货] 检测到上一次残留弹窗，先关闭');
-          closeBtn.click();
+          closeBtn0.click();
           await new Promise(r => setTimeout(r, 1500));
         }
       }
@@ -1336,26 +1313,27 @@
       btn.click();
       console.log('[定时发货] 已点击"批量查单发货"按钮');
 
-      // 2. 等待弹窗
+      // 2. 等2秒后检测弹窗是否出现
+      await new Promise(r => setTimeout(r, 2000));
       const dialog = await waitForShipDialog();
       console.log('[定时发货] 弹窗已出现');
 
       // 3. 勾选选项
       // 所有订单出库
-      const radioAll = document.getElementById('shipmentstype0');
+      const radioAll = document.getElementById('shipmentstypeOld0');
       if (!radioAll) throw new Error('未找到"所有订单出库"选项，弹窗结构可能已变化');
       if (!radioAll.checked) radioAll.click();
 
       // 发货失败自动备注（默认已勾，确保勾上）
-      const cbRemark = document.getElementById('sendErrorRemarks');
+      const cbRemark = document.getElementById('sendErrorRemarksOld');
       if (cbRemark && !cbRemark.checked) cbRemark.click();
 
       // 使用后台上家快递单号发货出库
-      const cbSync = document.getElementById('syncBackgroundExpress');
+      const cbSync = document.getElementById('syncBackgroundExpressOld');
       if (cbSync && !cbSync.checked) cbSync.click();
 
       // 快速发货(有单号就发货)
-      const radioFast = document.getElementById('shippingtype0');
+      const radioFast = document.getElementById('shippingtypeOld0');
       if (!radioFast) throw new Error('未找到"快速发货"选项，弹窗结构可能已变化');
       if (!radioFast.checked) radioFast.click();
 
@@ -1365,20 +1343,20 @@
       await new Promise(r => setTimeout(r, 500));
 
       // 4. 点击"开始"
-      const startBtn = dialog.querySelector('.fo-layer-btnstart');
+      const startBtn = dialog.querySelector('.fo-layer-old-btnstart');
       if (!startBtn) throw new Error('未找到"开始"按钮');
       startBtn.click();
       console.log('[定时发货] 已点击"开始"，等待执行完成...');
       updateShipStatus('🚚 执行中，请稍候...', 'info');
 
-      // 5. 等待执行完成（内部先等5秒再开始轮询）
+      // 5. 等待执行完成（内部先等5秒再开始轮询，每5秒检测一次）
       await waitForShipComplete(dialog);
       console.log('%c[定时发货] 发货执行完成', 'color:#67c23a;font-weight:bold;');
       updateShipStatus('✅ 发货完成，5秒后关闭弹窗...', 'success');
 
       // 6. 等5秒让用户查看结果，再关闭弹窗
       await new Promise(r => setTimeout(r, 5000));
-      const closeBtn = dialog.querySelector('.fo-layer-btnstop');
+      const closeBtn = dialog.querySelector('.fo-layer-old-btnstop');
       if (closeBtn) {
         closeBtn.click();
         console.log('[定时发货] 已关闭弹窗');
@@ -1388,16 +1366,33 @@
       const timeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
       updateShipStatus(`✅ 查单发货完成（${timeStr}）`, 'success');
 
-      // 记录本次执行时间到本地缓存
-      chrome.storage.local.get('jd_settings', (result) => {
-        const settings = result.jd_settings || {};
-        settings.lastShipTime = Date.now();
-        chrome.storage.local.set({ 'jd_settings': settings });
+      // 记录本次执行时间到本地缓存（await确保scheduleNext读到新值）
+      await new Promise(resolve => {
+        chrome.storage.local.get('jd_settings', (result) => {
+          const s = result.jd_settings || {};
+          s.lastShipTime = Date.now();
+          chrome.storage.local.set({ 'jd_settings': s }, resolve);
+        });
       });
+      return true;
     } catch (e) {
       console.error('[定时发货] 执行失败:', e);
       updateShipStatus(`❌ ${e.message}，等待下次执行`, 'error');
-      // 失败时不强制关闭弹窗，保留现场让用户查看；仅当弹窗不存在时无需处理
+      // 超时或出错时尝试关闭弹窗
+      const dlg = document.getElementById('fo-layer-old');
+      if (dlg && dlg.style.display !== 'none') {
+        const btn = dlg.querySelector('.fo-layer-old-btnstop');
+        if (btn) btn.click();
+      }
+      // 失败也更新lastShipTime，避免立即重试
+      await new Promise(resolve => {
+        chrome.storage.local.get('jd_settings', (result) => {
+          const s = result.jd_settings || {};
+          s.lastShipTime = Date.now();
+          chrome.storage.local.set({ 'jd_settings': s }, resolve);
+        });
+      });
+      return false;
     } finally {
       isAutoShipping = false;
     }
@@ -1659,16 +1654,27 @@
       const timeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
       updateExpressStatus(`✅ 同步物流完成（${timeStr}）`, 'success');
 
-      // 记录本次执行时间
-      chrome.storage.local.get('jd_settings', (result) => {
-        const s = result.jd_settings || {};
-        s.lastExpressTime = Date.now();
-        chrome.storage.local.set({ 'jd_settings': s });
+      // 记录本次执行时间（await确保scheduleExpressNext读到新值）
+      await new Promise(resolve => {
+        chrome.storage.local.get('jd_settings', (result) => {
+          const s = result.jd_settings || {};
+          s.lastExpressTime = Date.now();
+          chrome.storage.local.set({ 'jd_settings': s }, resolve);
+        });
       });
+      return true;
     } catch (e) {
       console.error('[同步物流] 执行失败:', e);
-      updateExpressStatus(`❌ 同步物流失败: ${e.message}`, 'error');
-      // 失败时不强制关闭弹窗（可能正在发送中），等待下次调度
+      updateExpressStatus(`❌ 同步物流失败: ${e.message}，等待下次执行`, 'error');
+      // 失败也更新lastExpressTime，避免立即重试
+      await new Promise(resolve => {
+        chrome.storage.local.get('jd_settings', (result) => {
+          const s = result.jd_settings || {};
+          s.lastExpressTime = Date.now();
+          chrome.storage.local.set({ 'jd_settings': s }, resolve);
+        });
+      });
+      return false;
     } finally {
       isSyncingExpress = false;
     }
