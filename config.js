@@ -40,6 +40,14 @@ const ZHICHACHA_CONFIG = {
   autoShipEnabled: false,
   autoShipInterval: 30,
 
+  // 自动切换店铺批量查单发货（默认关闭）
+  autoSwitchShopEnabled: false,   // 是否开启自动切换店铺（开启后按店铺轮转执行查单发货）
+  shopSwitchCountdown: 30,        // 切换前提示倒计时（秒），即预留的切换时间
+  shopSwitchGap: 30000,           // 同一轮内，上一店发货完成到下一店开始切换的间隔（毫秒）
+  shopListDialogTimeout: 8000,    // 点击店铺列表按钮后，等待店铺列表面板出现的超时（毫秒）
+  shopChangeTimeout: 30000,       // 点击目标店铺后，等待页面刷新并切换到该店铺的超时（毫秒）
+  perShopShipTimeout: 120000,     // 单个店铺批量查单发货最长执行时间（毫秒，2分钟）
+
   // 定时发货时间范围限制（勾选后仅在该时段内执行，格式 HH:MM）
   autoShipTimeRangeEnabled: false,
   autoShipTimeStart: '07:00',

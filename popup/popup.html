@@ -126,7 +126,7 @@
         <div class="setting-item">
           <div class="setting-info">
             <div class="setting-name">定时查单发货</div>
-            <div class="setting-desc">自动点击"批量查单发货"，勾选所有订单出库、快速发货等选项并执行</div>
+            <div class="setting-desc">自动点击"批量查单发货"并执行；开启后展开：执行间隔、自动切换店铺、执行时段</div>
           </div>
           <label class="switch">
             <input type="checkbox" id="setting-auto-ship">
@@ -137,9 +137,20 @@
         <div class="setting-item" id="auto-ship-interval-row" style="display:none;">
           <div class="setting-info">
             <div class="setting-name">执行间隔（分钟）</div>
-            <div class="setting-desc">每隔多少分钟自动执行一次查单发货</div>
+            <div class="setting-desc">每隔多少分钟自动执行一次查单发货；开启切换店铺后表示跑完一轮店铺后的等待间隔</div>
           </div>
           <input type="number" id="setting-auto-ship-interval" min="1" max="720" value="30" style="width:70px;padding:6px 8px;border:1px solid #dcdfe6;border-radius:4px;text-align:center;font-size:14px;">
+        </div>
+
+        <div class="setting-item" id="auto-switch-shop-row" style="display:none;">
+          <div class="setting-info">
+            <div class="setting-name">自动切换店铺</div>
+            <div class="setting-desc">开启后按绑定店铺逐一轮换：切换前30秒提示（可取消），每店发货最长2分钟，跑完一轮再按间隔等待</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="setting-auto-switch-shop">
+            <span class="slider"></span>
+          </label>
         </div>
 
         <div class="setting-item">
@@ -176,7 +187,7 @@
 
     <!-- 底部 -->
     <footer class="popup-footer">
-      <span>v1.0.2 | 智查查风控系统</span>
+      <span>v1.0.3 | 智查查风控系统</span>
     </footer>
   </div>
 

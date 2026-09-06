@@ -452,13 +452,20 @@ body {
 .setting-item {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: 12px;
   padding: 12px 0;
   border-bottom: 1px solid #f0f0f0;
 }
 
 .setting-item-full {
   padding: 8px 0 16px;
+}
+
+/* 左侧文字区：可收缩、正常换行，避免长描述挤压右侧开关 */
+.setting-info {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .setting-name {
@@ -469,6 +476,17 @@ body {
 .setting-desc {
   font-size: 12px;
   color: #999;
+  line-height: 1.5;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* 设置项右侧控件（开关/数字输入框）不被压缩，保证完整显示不被遮挡 */
+.setting-item > .switch,
+.setting-item > label.switch,
+.setting-item > input[type="number"] {
+  flex: 0 0 auto;
+  margin-top: 2px;
 }
 
 .input-full {

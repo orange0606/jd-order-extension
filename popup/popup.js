@@ -36,6 +36,7 @@ function bindEvents() {
   document.getElementById('setting-auto-ship').addEventListener('change', (e) => {
     const on = e.target.checked;
     document.getElementById('auto-ship-interval-row').style.display = on ? 'flex' : 'none';
+    document.getElementById('auto-switch-shop-row').style.display = on ? 'flex' : 'none';
     document.getElementById('auto-ship-timerange-row').style.display = on ? 'flex' : 'none';
   });
 
@@ -258,12 +259,15 @@ async function loadSettings() {
     document.getElementById('setting-auto-ship').checked = settings.autoShip === true;
     document.getElementById('setting-auto-ship-interval').value = settings.autoShipInterval || 30;
     document.getElementById('setting-auto-ship-timerange').checked = settings.autoShipTimeRange === true;
+    // 自动切换店铺开关
+    document.getElementById('setting-auto-switch-shop').checked = settings.autoSwitchShop === true;
     // 时间段从 config.js 读取，不允许用户修改
     const cfg = (typeof ZHICHACHA_CONFIG !== 'undefined') ? ZHICHACHA_CONFIG : {};
     const timeStart = settings.autoShipTimeStart || cfg.autoShipTimeStart || '07:00';
     const timeEnd = settings.autoShipTimeEnd || cfg.autoShipTimeEnd || '22:00';
     document.getElementById('auto-ship-timerange-desc').textContent = `勾选后仅在 ${timeStart} ~ ${timeEnd} 内自动执行`;
     document.getElementById('auto-ship-interval-row').style.display = settings.autoShip ? 'flex' : 'none';
+    document.getElementById('auto-switch-shop-row').style.display = settings.autoShip ? 'flex' : 'none';
     document.getElementById('auto-ship-timerange-row').style.display = settings.autoShip ? 'flex' : 'none';
     document.getElementById('setting-auto-sync-express').checked = settings.autoSyncExpress === true;
     document.getElementById('setting-sync-express-interval').value = settings.autoSyncExpressInterval || 120;
@@ -278,23 +282,34 @@ async function saveSettings() {
   const expressInterval = parseInt(document.getElementById('setting-sync-express-interval').value, 10) || 120;
   // 时间段从 config.js 读取
   const cfg = (typeof ZHICHACHA_CONFIG !== 'undefined') ? ZHICHACHA_CONFIG : {};
-  const settings = {
+  const autoShipOn = document.getElementById('setting-auto-ship').checked;
+  const newSettings = {
     autoSync: document.getElementById('setting-auto-sync').checked,
     showNotification: document.getElementById('setting-notification').checked,
-    autoShip: document.getElementById('setting-auto-ship').checked,
+    autoShip: autoShipOn,
     autoShipInterval: Math.max(1, Math.min(720, interval)),
+    // 关闭定时查单发货时，自动切换店铺一并关闭
+    autoSwitchShop: autoShipOn && document.getElementById('setting-auto-switch-shop').checked,
     autoShipTimeRange: document.getElementById('setting-auto-ship-timerange').checked,
     autoShipTimeStart: cfg.autoShipTimeStart || '07:00',
     autoShipTimeEnd: cfg.autoShipTimeEnd || '22:00',
     autoSyncExpress: document.getElementById('setting-auto-sync-express').checked,
     autoSyncExpressInterval: Math.max(1, Math.min(1440, expressInterval))
   };
-  
-  await sendMessage({
-    type: 'SAVE_SETTINGS',
-    payload: settings
-  });
-  
+
+  // 先读取现有设置合并（保留 shopId/lastShipTime 等字段），直接写入 storage
+  // 直接写入 storage 比发消息给 service-worker 更可靠（避免 SW 休眠导致延迟）
+  const result = await chrome.storage.local.get('jd_settings');
+  const merged = Object.assign({}, result.jd_settings || {}, newSettings);
+  await chrome.storage.local.set({ 'jd_settings': merged });
+
+  // 再通知 service-worker（用于通知京巴士等其他标签页）
+  try {
+    await sendMessage({ type: 'SAVE_SETTINGS', payload: newSettings });
+  } catch (e) {
+    // storage 已写入成功，SW 通知失败不影响
+  }
+
   showToast('设置已保存', 'success');
   showMainView();
 }

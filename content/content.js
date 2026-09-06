@@ -721,6 +721,13 @@
           <span class="status-dot status-info" id="ship-status-dot"></span>
           <span class="status-text" id="ship-status-text"></span>
         </div>
+        <div class="shop-switch-plan jd-only" id="shop-switch-plan" style="display:none;">
+          <div class="shop-switch-plan-title">
+            <span>🔁 店铺自动切换计划</span>
+            <button type="button" class="shop-switch-run-btn" id="btn-switch-run-now" title="立即按计划切换到下一个店铺并发货">立即执行</button>
+          </div>
+          <div class="shop-switch-plan-list" id="shop-switch-plan-list"></div>
+        </div>
         <div class="scraper-status express-only" id="express-status" style="display:none;">
           <span class="status-dot status-info" id="express-status-dot"></span>
           <span class="status-text" id="express-status-text"></span>
@@ -752,6 +759,14 @@
     document.getElementById('btn-header-ship').addEventListener('click', () => {
       runBatchShipOnce(true);
     });
+
+    // 立即执行一次"切换店铺批量查单发货"轮转（手动，不受时段限制）
+    const btnSwitchRunNow = document.getElementById('btn-switch-run-now');
+    if (btnSwitchRunNow) {
+      btnSwitchRunNow.addEventListener('click', () => {
+        manualRunSwitchOnce();
+      });
+    }
 
     // 跳转京巴士同步物流页
     document.getElementById('btn-header-goto-express').addEventListener('click', () => {
@@ -1456,29 +1471,10 @@
   }
 
   /**
-   * 递归调度下一次执行
+   * 递归调度下一次执行（统一走 setupAutoShipTimer，避免定时器冲突）
    */
   function scheduleNext() {
-    chrome.storage.local.get('jd_settings', (result) => {
-      const settings = result.jd_settings || {};
-      if (!settings.autoShip) return;
-
-      const minutes = Math.max(1, Math.min(720, settings.autoShipInterval || 30));
-      const intervalMs = minutes * 60 * 1000;
-      const delay = calcNextDelay(settings.lastShipTime, settings, intervalMs);
-
-      const nextTime = new Date(Date.now() + delay);
-      const nextStr = `${String(nextTime.getHours()).padStart(2,'0')}:${String(nextTime.getMinutes()).padStart(2,'0')}`;
-      const rangeText = settings.autoShipTimeRange
-        ? `，时段 ${settings.autoShipTimeStart}~${settings.autoShipTimeEnd}`
-        : '';
-      updateShipStatus(`🚚 每${minutes}分钟，下次 ${nextStr}${rangeText}`, 'info');
-
-      autoShipTimer = setTimeout(async () => {
-        await runBatchShipOnce();
-        scheduleNext();
-      }, delay);
-    });
+    setupAutoShipTimer();
   }
 
   /**
@@ -1495,13 +1491,31 @@
       autoShipFirstTimer = null;
     }
 
-    chrome.storage.local.get('jd_settings', (result) => {
+    chrome.storage.local.get('jd_settings', async (result) => {
       const settings = result.jd_settings || {};
       if (!settings.autoShip) {
         console.log('[定时发货] 未开启');
         updateShipStatus('🚚 定时查单发货未开启', 'info');
         return;
       }
+      // 开启了"自动切换店铺"：绑定店铺≥2个才走轮转调度，否则回退普通定时发货
+      if (settings.autoSwitchShop) {
+        const queue = await getSwitchShopQueue();
+        if (queue.length >= 2) {
+          console.log('%c[定时发货] 已启用自动切换店铺模式，进入店铺轮转调度', 'color:#409eff;font-weight:bold;');
+          setupShopSwitchTimer();
+          return;
+        }
+        console.log('[定时发货] 自动切换店铺已开启但绑定店铺不足2个，回退普通定时发货');
+      }
+      startNormalShipTimer(settings);
+    });
+  }
+
+  /**
+   * 普通（单店）定时查单发货调度
+   */
+  function startNormalShipTimer(settings) {
       const minutes = Math.max(1, Math.min(720, settings.autoShipInterval || 30));
       const intervalMs = minutes * 60 * 1000;
       const delay = calcNextDelay(settings.lastShipTime, settings, intervalMs);
@@ -1518,7 +1532,608 @@
         await runBatchShipOnce();
         scheduleNext();
       }, delay);
+  }
+
+  // ==================== 自动切换店铺批量查单发货 ====================
+  // 设计说明：切换店铺会导致页面刷新，内存状态全部丢失，
+  // 因此调度进度统一持久化到 chrome.storage.local 的 shop_switch_state，
+  // 页面刷新后由 setupShopSwitchTimer 检测 phase='switching' 并恢复执行。
+
+  const SHOP_SWITCH_STATE_KEY = 'shop_switch_state';
+  let shopSwitchTimer = null;       // 切换调度 setTimeout 句柄
+  let isSwitchingShop = false;      // 防止切换流程并发
+  let switchCountdownTimer = null;  // 30秒倒计时 interval 句柄
+
+  // 读取 config.js 配置（带默认值兜底）
+  function switchCfg(name, def) {
+    const c = (typeof ZHICHACHA_CONFIG !== 'undefined') ? ZHICHACHA_CONFIG : {};
+    return (c[name] !== undefined && c[name] !== null) ? c[name] : def;
+  }
+
+  // 时间戳格式化为 HH:MM:SS
+  function fmtSwitchTime(ts) {
+    if (!ts) return '--:--:--';
+    const d = new Date(ts);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+  }
+
+  // 读取切换调度状态
+  function getShopSwitchState() {
+    return new Promise(resolve => {
+      try {
+        chrome.storage.local.get(SHOP_SWITCH_STATE_KEY, r => resolve(r[SHOP_SWITCH_STATE_KEY] || null));
+      } catch (e) { resolve(null); }
     });
+  }
+  function saveShopSwitchState(state) {
+    return new Promise(resolve => {
+      try {
+        chrome.storage.local.set({ [SHOP_SWITCH_STATE_KEY]: state }, resolve);
+      } catch (e) { resolve(); }
+    });
+  }
+  function removeShopSwitchState() {
+    return new Promise(resolve => {
+      try {
+        chrome.storage.local.remove(SHOP_SWITCH_STATE_KEY, resolve);
+      } catch (e) { resolve(); }
+    });
+  }
+
+  // 获取用于轮转的店铺队列（来自已绑定店铺，按 shop_id 去重）
+  async function getSwitchShopQueue() {
+    const shops = await getBoundShops();
+    const map = new Map();
+    (shops || []).forEach(s => {
+      const id = String(s.shop_id || '').trim();
+      if (id && !map.has(id)) {
+        map.set(id, { shopId: id, shopName: s.shop_name || id });
+      }
+    });
+    return Array.from(map.values());
+  }
+
+  // 在折叠面板渲染每个店铺的下一次切换时间
+  function renderSwitchPlan(queue, state) {
+    const box = document.getElementById('shop-switch-plan');
+    const list = document.getElementById('shop-switch-plan-list');
+    if (!box || !list) return;
+    if (!queue || queue.length === 0) { box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    const curIndex = state ? state.index : -1;
+    list.innerHTML = '';
+    queue.forEach((shop, i) => {
+      const item = document.createElement('div');
+      let cls = 'shop-switch-plan-item';
+      let timeText = '排队中';
+      const nextAt = state && state.shopNextAt ? state.shopNextAt[shop.shopId] : null;
+      if (state && state.phase === 'switching' && i === curIndex) {
+        cls += ' is-current';
+        timeText = '切换/发货中';
+      } else if (nextAt) {
+        if (i === curIndex) cls += ' is-current';
+        else if (curIndex >= 0 && i < curIndex) cls += ' is-done';
+        // 只有"下一个待执行店铺"才给确切时间（基于上一店真实结束时间推算）
+        timeText = fmtSwitchTime(nextAt);
+      }
+      item.className = cls;
+      item.title = shop.shopName;
+      item.innerHTML = `<span class="plan-name">${i + 1}. ${shop.shopName}</span><span class="plan-time">${timeText}</span>`;
+      list.appendChild(item);
+    });
+  }
+
+  /**
+   * 计算各店铺的切换时刻（用于面板展示，含"最长2分钟"保底）
+   * 每个店铺的保底窗口 = 切换倒计时 + 单店最长发货(2分钟) + 店间间隔；
+   * 尚未执行的店铺按此保底窗口线性预估，避免排期过于乐观；
+   * 当某店实际结束晚于保底（失败/卡住/超时），由 advanceAfterShop 用真实结束时间顺延。
+   */
+  function estimateShopNextAt(queue, index, baseCountdownAt) {
+    const countdownMs = (switchCfg('shopSwitchCountdown', 30)) * 1000;
+    const perShipMs = switchCfg('perShopShipTimeout', 120000); // 单店最长2分钟保底
+    const gapMs = switchCfg('shopSwitchGap', 30000);
+    const stepMs = countdownMs + perShipMs + gapMs;           // 单个店铺保底占用时长
+    const result = {};
+    queue.forEach((shop, i) => {
+      let offset = i - index;
+      if (offset < 0) offset += queue.length; // 已执行过的，排到下一轮
+      result[shop.shopId] = baseCountdownAt + offset * stepMs + countdownMs;
+    });
+    return result;
+  }
+
+  // 移除倒计时浮层
+  function removeSwitchCountdown() {
+    if (switchCountdownTimer) { clearInterval(switchCountdownTimer); switchCountdownTimer = null; }
+    const el = document.getElementById('orange-zcc-switch-toast');
+    if (el) el.remove();
+  }
+
+  /**
+   * 切换前30秒倒计时提示
+   * @returns 取消函数
+   */
+  function showSwitchCountdown(shop, seconds, onDone, onCancel, onNow) {
+    removeSwitchCountdown();
+    const el = document.createElement('div');
+    el.className = 'orange-zcc-switch-toast';
+    el.id = 'orange-zcc-switch-toast';
+    let remain = seconds;
+    const draw = () => {
+      el.innerHTML = `
+        <div class="switch-toast-title">🔁 即将自动切换店铺</div>
+        <div class="switch-toast-body">
+          将在 <span class="switch-toast-count">${remain}</span> 秒后自动切换到【${shop.shopName}】并批量查单发货<br>
+          <span style="color:#909399;font-size:11px;">预留切换时间 ${seconds} 秒，单店发货最长 2 分钟，可取消本次</span>
+        </div>
+        <div class="switch-toast-actions">
+          <button class="switch-toast-cancel" type="button">取消本次（下次继续）</button>
+          <button class="switch-toast-now" type="button">立即切换</button>
+        </div>`;
+      el.querySelector('.switch-toast-cancel').onclick = () => { removeSwitchCountdown(); onCancel && onCancel(); };
+      el.querySelector('.switch-toast-now').onclick = () => { removeSwitchCountdown(); onNow && onNow(); };
+    };
+    draw();
+    document.body.appendChild(el);
+    switchCountdownTimer = setInterval(() => {
+      remain--;
+      if (remain <= 0) { removeSwitchCountdown(); onDone && onDone(); return; }
+      const cnt = el.querySelector('.switch-toast-count');
+      if (cnt) cnt.textContent = remain;
+    }, 1000);
+  }
+
+  // 等待店铺列表面板出现且已渲染出店铺行
+  function waitForShopListFrame(timeout) {
+    return new Promise((resolve, reject) => {
+      const start = Date.now();
+      const check = () => {
+        const frame = document.querySelector('.j_showShopsFrame');
+        const tbody = document.querySelector('#j_showShopsFrame-Tbody');
+        const visible = frame && getComputedStyle(frame).display !== 'none'
+          && tbody && tbody.querySelectorAll('tr').length > 0;
+        if (visible) return resolve(frame);
+        if (Date.now() - start > timeout) return reject(new Error('店铺列表面板未出现或为空'));
+        setTimeout(check, 400);
+      };
+      check();
+    });
+  }
+
+  /**
+   * 执行 DOM 层面的店铺切换（点击后页面预期会刷新）
+   */
+  async function performSwitchToShop(shop) {
+    // 1. 点击店铺列表展示按钮 .j_showShopsLogo
+    const logo = document.querySelector('.j_showShopsLogo');
+    if (!logo) throw new Error('未找到店铺列表展示按钮（.j_showShopsLogo），请确认在订单列表页');
+    logo.click();
+    console.log('%c[切换店铺] 步骤1：已点击店铺列表展示按钮', 'color:#e6a23c;');
+
+    // 2. 约2秒后等待列表面板出现
+    await new Promise(r => setTimeout(r, 2000));
+    const frame = await waitForShopListFrame(switchCfg('shopListDialogTimeout', 8000));
+    console.log('%c[切换店铺] 步骤2：店铺列表面板已出现', 'color:#e6a23c;');
+
+    // 3. 按 data-id / data-name 匹配目标店铺的"已登录"按钮
+    const btns = frame.querySelectorAll('#j_showShopsFrame-Tbody .j_showShopsFrame-Button');
+    let target = null;
+    btns.forEach(b => {
+      const id = String(b.getAttribute('data-id') || '').trim();
+      const name = (b.getAttribute('data-name') || '').trim();
+      if (id === String(shop.shopId) || (shop.shopName && name === shop.shopName)) target = b;
+    });
+    if (!target) throw new Error(`店铺列表中未找到【${shop.shopName}】(ID:${shop.shopId})，请检查店铺绑定`);
+    console.log(`%c[切换店铺] 步骤3：命中目标店铺【${shop.shopName}】，准备点击切换`, 'color:#e6a23c;');
+
+    // 4. 先把"切换中"状态持久化（页面刷新后据此恢复）
+    // 5. 点击目标店铺按钮，触发切换（页面会刷新）
+    target.click();
+    console.log('%c[切换店铺] 步骤4：已点击目标店铺，等待页面刷新切换...', 'color:#e6a23c;');
+  }
+
+  // 切换（页面刷新或局部切换）后，轮询等待当前店铺变为目标店铺
+  // 匹配规则：店铺ID一致优先；ID取不到时用店铺名称兜底，避免ID口径不一致导致永远匹配不上
+  function waitForCurrentShop(targetShopId, targetShopName, timeout) {
+    return new Promise((resolve, reject) => {
+      const start = Date.now();
+      let lastInfo = null;
+      const check = async () => {
+        try {
+          const info = await getShopInfo();
+          lastInfo = info;
+          const idOk = info.shopId && String(info.shopId) === String(targetShopId);
+          const nameOk = targetShopName && info.shopName &&
+            String(info.shopName).trim() === String(targetShopName).trim();
+          if (idOk || nameOk) {
+            console.log(`%c[切换店铺] 店铺匹配成功（ID:${info.shopId || '-'} 名称:${info.shopName || '-'}）`, 'color:#67c23a;');
+            return resolve(info);
+          }
+        } catch (e) { /* 忽略单次读取失败，继续轮询 */ }
+        if (Date.now() - start > timeout) {
+          console.error('[切换店铺] 等待目标店铺超时，最后解析到的店铺：', lastInfo);
+          return reject(new Error(`切换后等待店铺【${targetShopName || targetShopId}】加载超时（当前:${lastInfo ? (lastInfo.shopName || lastInfo.shopId || '空') : '未解析到'}），请检查网络或手动刷新页面`));
+        }
+        setTimeout(check, 1000);
+      };
+      check();
+    });
+  }
+
+  /**
+   * 点击切换后，在"页面没有整页刷新"（局部切换）的情况下持续监控当前店铺，
+   * 一旦变成目标店铺就接着走恢复发货；超时未变化则判失败并推进下一店。
+   * 若页面整页刷新，本 JS 上下文随之销毁，改由新页面 init 的 resumeAfterSwitch 接管，互不冲突。
+   */
+  function watchSwitchOnSamePage(shop, queue, state) {
+    const start = Date.now();
+    const timeout = switchCfg('shopChangeTimeout', 30000);
+    const tick = async () => {
+      const s = await getShopSwitchState();
+      // 状态已被其他流程改变（整页刷新后接管/已推进），停止监控
+      if (!s || s.phase !== 'switching') return;
+      const info = await getShopInfo().catch(() => ({ shopId: '', shopName: '' }));
+      const idOk = info.shopId && String(info.shopId) === String(shop.shopId);
+      const nameOk = shop.shopName && info.shopName &&
+        String(info.shopName).trim() === String(shop.shopName).trim();
+      if (idOk || nameOk) {
+        console.log('%c[切换店铺] 当前页检测到已切换到目标店铺（未整页刷新），继续查单发货', 'color:#67c23a;font-weight:bold;');
+        isSwitchingShop = false; // 解除 doSwitch 加的锁，让 resumeAfterSwitch 进入
+        resumeAfterSwitch(s);
+        return;
+      }
+      if (Date.now() - start > timeout) {
+        console.error('[切换店铺] 等待店铺切换超时，判定失败并跳过该店');
+        updateShipStatus(`❌ 切换到【${shop.shopName}】超时，请检查店铺登录状态或刷新页面`, 'error');
+        isSwitchingShop = false;
+        await advanceAfterShop(queue, s, '切换超时');
+        return;
+      }
+      setTimeout(tick, 1000);
+    };
+    setTimeout(tick, 2000); // 2秒后开始检测，给切换动作留出时间
+  }
+
+  /**
+   * 推进到下一个店铺：更新 index、计算下一次动作时间并重新调度
+   * @param queue 当前队列
+   * @param state 当前状态（会被修改并持久化）
+   */
+  async function advanceAfterShop(queue, state, reason) {
+    console.log(`%c[切换店铺] 店铺【${queue[state.index] ? queue[state.index].shopName : state.index}】结束（${reason}），推进队列`, 'color:#909399;');
+    const finishedIndex = state.index;
+    state.index = (state.index + 1) % queue.length;
+    const now = Date.now();
+
+    const countdownMs = (switchCfg('shopSwitchCountdown', 30)) * 1000;
+    const perShipMs = switchCfg('perShopShipTimeout', 120000); // 单店最长2分钟保底
+    const gapMs = switchCfg('shopSwitchGap', 30000);
+    const stepMs = countdownMs + perShipMs + gapMs;
+
+    let gap;
+    if (state.index === 0) {
+      // 已跑完一整轮，按用户设置的间隔时间等待下一轮
+      const minutes = Math.max(1, Math.min(720, state.intervalMin || 30));
+      gap = minutes * 60 * 1000;
+      console.log(`%c[切换店铺] 本轮全部店铺已完成，${minutes} 分钟后开启下一轮`, 'color:#67c23a;font-weight:bold;');
+    } else {
+      // 同一轮内，店铺间预留切换时间
+      gap = gapMs;
+    }
+
+    // 下一店倒计时开始时刻 = max(上一店保底窗口结束, 上一店真实结束+间隔)
+    // —— 正常情况保底2分钟优先，避免操作过快失误；失败/卡住导致实际更晚时按真实时间顺延
+    const realNextStart = now + gap;
+    const guardNextStart = (state.baseAt || now) + stepMs;
+    const nextBase = Math.max(realNextStart, guardNextStart);
+    if (realNextStart < guardNextStart) {
+      console.log(`[切换店铺] 该店实际较早结束，按最长2分钟保底排期（${Math.round((guardNextStart - realNextStart) / 1000)}秒保底缓冲）`);
+    } else {
+      console.log('[切换店铺] 实际结束晚于保底窗口，下一店按真实结束时间顺延');
+    }
+
+    state.phase = 'idle';
+    state.baseAt = nextBase;       // 下一店倒计时开始时刻
+    state.nextAt = nextBase;
+    state.targetShopId = '';
+    state.targetShopName = '';
+    state.shopNextAt = estimateShopNextAt(queue, state.index, nextBase);
+    await saveShopSwitchState(state);
+    renderSwitchPlan(queue, state);
+    setupShopSwitchTimer();
+  }
+
+  /**
+   * 到点后处理当前 index 对应的店铺：
+   * 已在该店铺则直接发货；否则先倒计时再切换
+   */
+  async function beginCurrentShop(queue, state, settings, manual = false) {
+    if (isSwitchingShop) return;
+    const shop = queue[state.index];
+    if (!shop) { // 队列异常，重置
+      await removeShopSwitchState();
+      setupShopSwitchTimer();
+      return;
+    }
+
+    // 自动调度受时间范围限制（手动/恢复流程不走这里）
+    if (!manual && !isInShipTimeRange(settings)) {
+      console.log(`[切换店铺] 当前不在 ${settings.autoShipTimeStart}~${settings.autoShipTimeEnd} 时段，本次跳过`);
+      updateShipStatus(`🔁 非执行时段，跳过【${shop.shopName}】`, 'info');
+      await advanceAfterShop(queue, state, '非执行时段');
+      return;
+    }
+
+    // 判断当前是否已处于目标店铺（无需切换）
+    const cur = await getShopInfo();
+    if (cur.shopId && String(cur.shopId) === String(shop.shopId)) {
+      console.log(`%c[切换店铺] 当前已是目标店铺【${shop.shopName}】，无需切换，直接查单发货`, 'color:#409eff;');
+      await shipForShopAndAdvance(queue, state, shop);
+      return;
+    }
+
+    // 需要切换：先30秒倒计时提示（可取消 / 立即切换）
+    const countdownSec = switchCfg('shopSwitchCountdown', 30);
+    updateShipStatus(`🔁 ${countdownSec}秒后切换到【${shop.shopName}】`, 'info');
+    console.log(`%c[切换店铺] 弹出 ${countdownSec} 秒切换倒计时：目标【${shop.shopName}】`, 'color:#e6a23c;font-weight:bold;');
+
+    const doSwitch = async () => {
+      isSwitchingShop = true;
+      try {
+        // 持久化 switching 状态，页面刷新后据此恢复
+        state.phase = 'switching';
+        state.targetShopId = shop.shopId;
+        state.targetShopName = shop.shopName;
+        state.switchAt = Date.now();
+        await saveShopSwitchState(state);
+        renderSwitchPlan(queue, state);
+        await performSwitchToShop(shop);
+        // 点击后分两种情况：
+        // 1) 页面整页刷新 → 本上下文销毁，由新页面 init 检测 switching 走 resumeAfterSwitch；
+        // 2) 页面不刷新（局部切换）→ 由 watchSwitchOnSamePage 持续轮询，店铺一切换到位就立即发货。
+        watchSwitchOnSamePage(shop, queue, state);
+      } catch (e) {
+        console.error('[切换店铺] 切换操作失败:', e);
+        updateShipStatus(`❌ 切换【${shop.shopName}】失败：${e.message}，已跳过等待下次`, 'error');
+        isSwitchingShop = false;
+        // 收起可能已展开的店铺列表面板
+        const reduce = document.querySelector('.j_showShopsFrame-reduce');
+        if (reduce) reduce.click();
+        await advanceAfterShop(queue, state, '切换失败');
+      }
+    };
+
+    showSwitchCountdown(
+      shop,
+      countdownSec,
+      () => { doSwitch(); },                                  // 倒计时结束
+      async () => {                                           // 取消本次
+        console.log('[切换店铺] 用户取消本次切换，跳过该店，下一次继续');
+        updateShipStatus(`⏭️ 已取消切换【${shop.shopName}】，本次跳过`, 'info');
+        await advanceAfterShop(queue, state, '用户取消');
+      },
+      () => { doSwitch(); }                                   // 立即切换
+    );
+  }
+
+  /**
+   * 在目标店铺执行一次查单发货，完成后推进队列（切换流程专用）
+   */
+  async function shipForShopAndAdvance(queue, state, shop) {
+    isSwitchingShop = true;
+    try {
+      updateShipStatus(`🚚 正在为【${shop.shopName}】批量查单发货...`, 'info');
+      console.log(`%c[切换店铺] 开始为【${shop.shopName}】执行批量查单发货`, 'color:#409eff;font-weight:bold;');
+      // 复用既有发货流程：manual=true 跳过时段判断；切换模式不依赖 lastShipTime
+      const ok = await runBatchShipOnce(true);
+      console.log(`%c[切换店铺]【${shop.shopName}】查单发货结束，结果：${ok ? '成功' : '存在失败'}`, ok ? 'color:#67c23a;' : 'color:#e6a23c;');
+    } catch (e) {
+      console.error(`[切换店铺]【${shop.shopName}】发货异常:`, e);
+      updateShipStatus(`❌【${shop.shopName}】发货异常：${e.message}`, 'error');
+    } finally {
+      isSwitchingShop = false;
+      await advanceAfterShop(queue, state, '发货结束');
+    }
+  }
+
+  /**
+   * 页面刷新后恢复：等待店铺切换完成 → 发货 → 推进
+   */
+  async function resumeAfterSwitch(state) {
+    // 同步加锁（必须在第一个 await 之前），防止刷新恢复与局部切换监控重复进入
+    if (isSwitchingShop) {
+      console.log('[切换店铺] 恢复流程已在进行，忽略重复触发');
+      return;
+    }
+    isSwitchingShop = true;
+    const queue = await getSwitchShopQueue();
+    const shop = { shopId: state.targetShopId, shopName: state.targetShopName || state.targetShopId };
+    // 若队列里能找到更准确的名字，优先用队列
+    const matched = queue.find(q => String(q.shopId) === String(shop.shopId));
+    if (matched) shop.shopName = matched.shopName;
+
+    try {
+      console.log(`%c[切换店铺] 页面已刷新，等待切换到目标店铺【${shop.shopName}】...`, 'color:#e6a23c;font-weight:bold;');
+      updateShipStatus(`🔁 正在切换到【${shop.shopName}】，等待页面加载...`, 'info');
+      renderSwitchPlan(queue.length ? queue : [shop], state);
+
+      // 等待当前店铺变为目标店铺
+      await waitForCurrentShop(shop.shopId, shop.shopName, switchCfg('shopChangeTimeout', 30000));
+      console.log(`%c[切换店铺] 已成功切换到【${shop.shopName}】，2秒后开始查单发货`, 'color:#67c23a;');
+      updateShipStatus(`✅ 已切换到【${shop.shopName}】，准备发货`, 'success');
+      // 多等2秒让订单页按钮渲染稳定
+      await new Promise(r => setTimeout(r, 2000));
+
+      // 用恢复后的完整队列推进；若队列取不到则用单店兜底
+      const useQueue = queue.length ? queue : [shop];
+      const useState = queue.length ? state : Object.assign({}, state, { index: 0 });
+      await shipForShopAndAdvance(useQueue, useState, shop);
+    } catch (e) {
+      console.error('[切换店铺] 恢复切换流程失败:', e);
+      updateShipStatus(`❌ ${e.message}`, 'error');
+      isSwitchingShop = false;
+      // 容错：切换恢复失败也推进到下一店，避免卡死整个轮转
+      if (queue.length) {
+        await advanceAfterShop(queue, state, '恢复失败');
+      } else {
+        state.phase = 'idle';
+        state.targetShopId = '';
+        await saveShopSwitchState(state);
+        setupShopSwitchTimer();
+      }
+    }
+  }
+
+  /**
+   * 手动立即执行一次"切换店铺批量查单发货"（面板按钮触发，不受时段限制）
+   */
+  async function manualRunSwitchOnce() {
+    if (!checkExtensionContext()) return;
+    if (isSwitchingShop) {
+      updateShipStatus('🔁 店铺切换正在执行中，请勿重复触发', 'info');
+      console.log('[切换店铺] 手动触发被拦截：上一次切换尚未结束');
+      return;
+    }
+    const settings = await new Promise(r => chrome.storage.local.get('jd_settings', s => r(s.jd_settings || {})));
+    if (!settings.autoShip || !settings.autoSwitchShop) {
+      updateShipStatus('🔁 请先在插件设置中开启"定时查单发货"和"自动切换店铺"', 'error');
+      console.warn('[切换店铺] 手动触发失败：未开启自动切换店铺');
+      return;
+    }
+    const queue = await getSwitchShopQueue();
+    if (queue.length < 2) {
+      updateShipStatus('🔁 绑定店铺不足2个，无法切换，可直接用标题栏🚚发货', 'error');
+      console.warn('[切换店铺] 手动触发失败：绑定店铺不足2个', queue);
+      return;
+    }
+
+    // 取消正在等待的自动调度与倒计时，避免重复
+    if (shopSwitchTimer) { clearTimeout(shopSwitchTimer); shopSwitchTimer = null; }
+    removeSwitchCountdown();
+
+    const minutes = Math.max(1, Math.min(720, settings.autoShipInterval || 30));
+    let state = await getShopSwitchState();
+    if (!state || !Array.isArray(state.queueIds) ||
+      state.queueIds.join(',') !== queue.map(q => q.shopId).join(',')) {
+      state = {
+        phase: 'idle',
+        queueIds: queue.map(q => q.shopId),
+        index: 0,
+        intervalMin: minutes,
+        baseAt: Date.now(),
+        nextAt: Date.now(),
+        targetShopId: '',
+        targetShopName: '',
+        shopNextAt: {}
+      };
+    }
+    // 手动触发时若残留 switching（如上次异常），复位为 idle 从当前 index 开始
+    state.phase = 'idle';
+    state.targetShopId = '';
+    state.intervalMin = minutes;
+    state.baseAt = Date.now(); // 手动立即开始，基准重置为当前
+    state.nextAt = Date.now();
+    state.shopNextAt = estimateShopNextAt(queue, state.index, Date.now(), settings);
+    await saveShopSwitchState(state);
+    renderSwitchPlan(queue, state);
+
+    const shop = queue[state.index];
+    console.log('%c[切换店铺] 手动触发：立即开始切换店铺发货，首个目标【' + (shop ? shop.shopName : '-') + '】', 'color:#f56c6c;font-weight:bold;');
+    updateShipStatus(`🔁 手动触发，立即切换到【${shop ? shop.shopName : '-'}】`, 'info');
+    await beginCurrentShop(queue, state, settings, true);
+  }
+
+  /**
+   * 自动切换店铺调度器（切换模式下替代 setupAutoShipTimer 的普通调度）
+   */
+  async function setupShopSwitchTimer() {
+    if (!isTargetPage()) return;
+    if (shopSwitchTimer) { clearTimeout(shopSwitchTimer); shopSwitchTimer = null; }
+
+    let settings;
+    try {
+      settings = await new Promise(r => chrome.storage.local.get('jd_settings', s => r(s.jd_settings || {})));
+    } catch (e) { return; }
+
+    // 未开启切换店铺：清理切换状态，交还给普通定时发货逻辑
+    if (!settings.autoShip || !settings.autoSwitchShop) {
+      const st = await getShopSwitchState();
+      if (st && st.phase !== 'switching') await removeShopSwitchState();
+      const planBox = document.getElementById('shop-switch-plan');
+      if (planBox) planBox.style.display = 'none';
+      return;
+    }
+
+    const state0 = await getShopSwitchState();
+    // 恢复分支：页面刷新后处于 switching
+    if (state0 && state0.phase === 'switching' && state0.targetShopId) {
+      console.log('%c[切换店铺] 检测到切换中状态（页面刚刷新），恢复执行', 'color:#e6a23c;font-weight:bold;');
+      resumeAfterSwitch(state0);
+      return;
+    }
+
+    const queue = await getSwitchShopQueue();
+    if (queue.length === 0) {
+      updateShipStatus('🔁 未获取到绑定店铺，无法自动切换', 'error');
+      return;
+    }
+    // 只有1个店铺时无需切换，直接走普通定时发货
+    if (queue.length === 1) {
+      console.log('[切换店铺] 仅1个绑定店铺，按普通定时发货处理');
+      const planBoxOne = document.getElementById('shop-switch-plan');
+      if (planBoxOne) planBoxOne.style.display = 'none';
+      return;
+    }
+
+    const minutes = Math.max(1, Math.min(720, settings.autoShipInterval || 30));
+    let state = state0;
+    if (!state || !Array.isArray(state.queueIds) ||
+      state.queueIds.join(',') !== queue.map(q => q.shopId).join(',')) {
+      // 首次运行或店铺队列发生变化：重新初始化
+      state = {
+        phase: 'idle',
+        queueIds: queue.map(q => q.shopId),
+        index: 0,
+        intervalMin: minutes,
+        baseAt: Date.now() + 2000, // 首店倒计时开始时刻（与 nextAt 一致）
+        nextAt: Date.now() + 2000, // 首次/重置后2秒即开始（尽快执行一遍）
+        targetShopId: '',
+        targetShopName: '',
+        shopNextAt: {}
+      };
+      console.log('%c[切换店铺] 初始化轮转队列：', 'color:#409eff;font-weight:bold;', queue.map(q => q.shopName));
+    }
+    state.intervalMin = minutes;
+
+    // 估算并渲染各店计划时间（以当前店倒计时开始时刻 baseAt 为基准，含2分钟保底）
+    state.baseAt = state.baseAt || state.nextAt;
+    state.shopNextAt = estimateShopNextAt(queue, state.index, state.baseAt, settings);
+    await saveShopSwitchState(state);
+    renderSwitchPlan(queue, state);
+
+    const intervalMs = minutes * 60 * 1000;
+    // 计算等待时长（叠加时间范围）
+    let delay = Math.max(2000, (state.nextAt || 0) - Date.now());
+    if (settings.autoShipTimeRange) {
+      const rangeDelay = calcNextDelay(null, settings, intervalMs);
+      // 非执行时段时，优先等到时段开始
+      if (!isInShipTimeRange(settings)) delay = rangeDelay;
+    }
+
+    const nextShop = queue[state.index];
+    console.log(`%c[切换店铺] 调度已规划：共${queue.length}个店，下一个【${nextShop ? nextShop.shopName : '-'}】，约${Math.round(delay / 1000)}秒后进入${switchCfg('shopSwitchCountdown', 30)}秒倒计时`, 'color:#409eff;');
+    console.log('%c[切换店铺] 各店预计时间:', 'color:#409eff;',
+      queue.map((q, i) => `${q.shopName}@${fmtSwitchTime(state.shopNextAt[q.shopId])}`).join('  |  '));
+    updateShipStatus(`🔁 轮转${queue.length}店，下一个【${nextShop ? nextShop.shopName : '-'}】约${fmtSwitchTime(Date.now() + delay)}`, 'info');
+
+    shopSwitchTimer = setTimeout(async () => {
+      // 到点前再次读取最新设置，避免使用过期状态
+      const latest = await new Promise(r => chrome.storage.local.get('jd_settings', s => r(s.jd_settings || {})));
+      const curState = await getShopSwitchState();
+      if (!latest.autoShip || !latest.autoSwitchShop || !curState) return;
+      await beginCurrentShop(queue, curState, latest);
+    }, delay);
   }
 
   // ==================== 同步物流状态（京巴士） ====================
@@ -1526,7 +2141,7 @@
   /**
    * 等待同步物流弹窗出现
    */
-  function waitForExpressDialog(timeout = 15000) {
+  function waitForExpressDialog(timeout = 8000) {
     return new Promise((resolve, reject) => {
       const start = Date.now();
       const check = () => {
@@ -1537,7 +2152,7 @@
           return;
         }
         if (Date.now() - start > timeout) {
-          reject(new Error('等待同步物流弹窗超时'));
+          reject(new Error('未找到同步物流弹窗，已放弃本次执行'));
         } else {
           setTimeout(check, 500);
         }
@@ -1548,19 +2163,32 @@
 
   /**
    * 等待发送完成：每10秒检测 .jbs-sync-buy-log-status 的 data-state
-   * data-state="success" 表示发送完成
+   * data-state="success" 表示发送完成，"error"/"warning" 表示异常
    */
   function waitForExpressComplete(dialog, timeout = 300000, initialWait = 5000) {
     return new Promise((resolve, reject) => {
       const start = Date.now();
       let lastState = '';
       const check = () => {
+        // 容错：弹窗被关闭或移除
+        if (!document.querySelector('.jbs-send-express-modal')) {
+          reject(new Error('同步物流弹窗被关闭，已取消本次执行'));
+          return;
+        }
+
         const statusEl = dialog.querySelector('.jbs-sync-buy-log-status');
         const state = statusEl ? (statusEl.getAttribute('data-state') || '') : '';
         const text = statusEl ? statusEl.textContent.trim() : '';
 
+        // 完成
         if (state === 'success' || text.includes('发送完成')) {
           resolve('done');
+          return;
+        }
+
+        // 异常状态
+        if (state === 'error' || (state === 'warning' && text.includes('失败'))) {
+          reject(new Error(`执行异常：${text || '未知错误'}`));
           return;
         }
 
@@ -1571,7 +2199,7 @@
         }
 
         if (Date.now() - start > timeout) {
-          reject(new Error('同步物流执行超时（5分钟）'));
+          reject(new Error('同步物流超时（5分钟），已关闭弹窗，等待下次执行'));
         } else {
           setTimeout(check, 10000);
         }
@@ -1608,7 +2236,20 @@
 
       // 检查弹窗是否已经打开（可能正在发送中）
       let dialog = document.querySelector('.jbs-send-express-modal');
-      const dialogOpen = dialog && dialog.style.display !== 'none';
+      let dialogOpen = dialog && dialog.style.display !== 'none';
+
+      // 如果弹窗停在错误/完成状态，先关闭再重新开始
+      if (dialogOpen) {
+        const oldStatus = dialog.querySelector('.jbs-sync-buy-log-status');
+        const oldState = oldStatus ? oldStatus.getAttribute('data-state') : '';
+        if (oldState === 'error' || oldState === 'success' || oldState === 'warning') {
+          const closeBtn = dialog.querySelector('button.zeromodal-btn-default');
+          if (closeBtn) closeBtn.click();
+          await new Promise(r => setTimeout(r, 1500));
+          dialog = null;
+          dialogOpen = false;
+        }
+      }
 
       if (!dialogOpen) {
         updateExpressStatus('📮 正在查找"同步物流状态"按钮...', 'info');
@@ -1632,7 +2273,18 @@
         startBtn.click();
         console.log('[同步物流] 已点击"开始发送"，等待执行完成...');
       } else {
-        console.log('[同步物流] 弹窗已打开，直接等待完成...');
+        // 弹窗已打开，检查是否在等待开始状态（idle），如果是则点"开始发送"
+        const statusEl = dialog.querySelector('.jbs-sync-buy-log-status');
+        const state = statusEl ? statusEl.getAttribute('data-state') : '';
+        if (state === 'idle' || !state) {
+          const startBtn = dialog.querySelector('button.zeromodal-btn-primary');
+          if (startBtn) {
+            startBtn.click();
+            console.log('[同步物流] 弹窗已打开但未开始，已点击"开始发送"');
+          }
+        } else {
+          console.log('[同步物流] 弹窗已打开且正在执行，直接等待完成...');
+        }
       }
 
       updateExpressStatus('📮 发送中，请稍候...', 'info');
@@ -1665,7 +2317,13 @@
       return true;
     } catch (e) {
       console.error('[同步物流] 执行失败:', e);
-      updateExpressStatus(`❌ 同步物流失败: ${e.message}，等待下次执行`, 'error');
+      updateExpressStatus(`❌ ${e.message}，等待下次执行`, 'error');
+      // 失败时关闭弹窗，避免残留影响下次执行
+      const dlg = document.querySelector('.jbs-send-express-modal');
+      if (dlg && dlg.style.display !== 'none') {
+        const btn = dlg.querySelector('button.zeromodal-btn-default');
+        if (btn) btn.click();
+      }
       // 失败也更新lastExpressTime，避免立即重试
       await new Promise(resolve => {
         chrome.storage.local.get('jd_settings', (result) => {
@@ -1681,29 +2339,10 @@
   }
 
   /**
-   * 递归调度下一次同步物流
+   * 递归调度下一次同步物流（统一走 setupExpressTimer，避免定时器冲突）
    */
   function scheduleExpressNext() {
-    chrome.storage.local.get('jd_settings', (result) => {
-      const settings = result.jd_settings || {};
-      if (!settings.autoSyncExpress) return;
-
-      const minutes = Math.max(1, Math.min(1440, settings.autoSyncExpressInterval || 120));
-      const intervalMs = minutes * 60 * 1000;
-      const delay = calcNextDelay(settings.lastExpressTime, settings, intervalMs);
-
-      const nextTime = new Date(Date.now() + delay);
-      const nextStr = `${String(nextTime.getHours()).padStart(2,'0')}:${String(nextTime.getMinutes()).padStart(2,'0')}`;
-      const rangeText = settings.autoShipTimeRange
-        ? `，时段 ${settings.autoShipTimeStart}~${settings.autoShipTimeEnd}`
-        : '';
-      updateExpressStatus(`📮 每${minutes}分钟，下次 ${nextStr}${rangeText}`, 'info');
-
-      expressTimer = setTimeout(async () => {
-        await runSyncExpressOnce();
-        scheduleExpressNext();
-      }, delay);
-    });
+    setupExpressTimer();
   }
 
   /**
@@ -1812,11 +2451,23 @@
         });
         return true;
 
-      case 'SETTINGS_UPDATED':
-        // 设置已更新，重新设置定时器
-        setupAutoShipTimer();
+      case 'SETTINGS_UPDATED': {
+        // 用户在设置面板点了保存：切换店铺模式下重置轮转，立即刷新计划并马上执行一遍
+        const ns = message.settings || {};
+        if (isTargetPage() && ns.autoShip && ns.autoSwitchShop && !isSwitchingShop) {
+          console.log('%c[切换店铺] 检测到设置已保存，重置轮转并立即执行一遍', 'color:#f56c6c;font-weight:bold;');
+          if (shopSwitchTimer) { clearTimeout(shopSwitchTimer); shopSwitchTimer = null; }
+          removeSwitchCountdown();
+          chrome.storage.local.remove(SHOP_SWITCH_STATE_KEY, () => {
+            setupAutoShipTimer();
+          });
+        } else {
+          // 设置已更新，重新设置定时器
+          setupAutoShipTimer();
+        }
         if (isExpressPage()) setupExpressTimer();
         break;
+      }
     }
   });
 

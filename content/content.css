@@ -376,3 +376,138 @@ a.orange-zcc-risk-link:hover {
   50% { transform: scale(1.2); }
   100% { transform: scale(1); }
 }
+
+/* ==================== 自动切换店铺计划 ==================== */
+.shop-switch-plan {
+  margin-top: 6px;
+  padding: 8px;
+  background: #f5f7fa;
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+}
+.shop-switch-plan-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.shop-switch-run-btn {
+  flex-shrink: 0;
+  background: #409eff;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 2px 10px;
+  font-size: 11px;
+  line-height: 18px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.shop-switch-run-btn:hover { background: #66b1ff; }
+.shop-switch-run-btn:active { background: #3a8ee6; }
+.shop-switch-plan-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.shop-switch-plan-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: #fff;
+  white-space: nowrap;
+}
+.shop-switch-plan-item.is-current {
+  background: #ecf5ff;
+  color: #409eff;
+  font-weight: 600;
+}
+.shop-switch-plan-item.is-done {
+  color: #67c23a;
+}
+.shop-switch-plan-item .plan-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.shop-switch-plan-item .plan-time {
+  color: #909399;
+  flex-shrink: 0;
+}
+.shop-switch-plan-item.is-current .plan-time { color: #409eff; }
+
+/* 美化滚动条 */
+.shop-switch-plan-list::-webkit-scrollbar { width: 6px; }
+.shop-switch-plan-list::-webkit-scrollbar-track { background: transparent; }
+.shop-switch-plan-list::-webkit-scrollbar-thumb {
+  background: #c0c4cc;
+  border-radius: 3px;
+}
+.shop-switch-plan-list::-webkit-scrollbar-thumb:hover { background: #909399; }
+
+/* ==================== 切换店铺倒计时浮层 ==================== */
+.orange-zcc-switch-toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2147483646;
+  min-width: 320px;
+  max-width: 480px;
+  background: #fff;
+  border: 1px solid #409eff;
+  border-radius: 8px;
+  box-shadow: 0 4px 24px rgba(0,0,0,.18);
+  padding: 14px 16px;
+  font-size: 13px;
+  color: #303133;
+}
+.orange-zcc-switch-toast .switch-toast-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 6px;
+  color: #e6a23c;
+}
+.orange-zcc-switch-toast .switch-toast-body { line-height: 1.6; }
+.orange-zcc-switch-toast .switch-toast-count {
+  color: #f56c6c;
+  font-weight: 700;
+  font-size: 16px;
+  margin: 0 2px;
+}
+.orange-zcc-switch-toast .switch-toast-actions {
+  margin-top: 10px;
+  text-align: right;
+}
+.orange-zcc-switch-toast .switch-toast-cancel {
+  background: #f4f4f5;
+  color: #606266;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  padding: 5px 14px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.orange-zcc-switch-toast .switch-toast-cancel:hover { background: #e9e9eb; }
+.orange-zcc-switch-toast .switch-toast-now {
+  background: #409eff;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 14px;
+  font-size: 12px;
+  cursor: pointer;
+  margin-left: 8px;
+}
+.orange-zcc-switch-toast .switch-toast-now:hover { background: #66b1ff; }

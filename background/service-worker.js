@@ -143,8 +143,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const existing = result.jd_settings || {};
         const merged = Object.assign({}, existing, message.payload);
         chrome.storage.local.set({ 'jd_settings': merged }, () => {
-          // 主动通知所有京东订单页设置已更新
-          chrome.tabs.query({ url: ['https://shop.jd.com/jdm/trade/orders/*'] }, (tabs) => {
+          // 通知所有相关标签页设置已更新（京东订单页 + 京巴士页）
+          chrome.tabs.query({ url: [
+            'https://shop.jd.com/jdm/trade/orders/*',
+            'https://pay.jingbashi.com/*'
+          ] }, (tabs) => {
             tabs.forEach(tab => {
               chrome.tabs.sendMessage(tab.id, { type: 'SETTINGS_UPDATED', settings: merged }).catch(() => {});
             });
