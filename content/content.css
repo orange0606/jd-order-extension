@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 京东订单抓取助手 - 悬浮面板样式
  */
 
@@ -337,6 +337,72 @@ a.orange-zcc-risk-link:hover {
   background: rgba(47, 84, 235, 0.08);
 }
 
+/* 跨店铺下单记录 */
+.orange-zcc-cross-orders {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: rgba(255, 251, 240, 0.9);
+  border: 1px solid rgba(225, 136, 6, 0.15);
+  border-radius: 6px;
+  flex-wrap: wrap;
+}
+
+.orange-zcc-cross-orders-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #996600;
+  white-space: nowrap;
+  line-height: 22px;
+}
+
+.orange-zcc-cross-orders-list {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.orange-zcc-cross-order {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: #fff;
+  border: 1px solid rgba(225, 136, 6, 0.2);
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.orange-zcc-cross-time {
+  color: #888;
+  font-size: 11px;
+  font-family: 'SF Mono', Consolas, monospace;
+}
+
+.orange-zcc-cross-amount {
+  font-weight: 700;
+  color: #d48806;
+  font-size: 12px;
+}
+
+/* 高风险时跨店记录用红色调 */
+.orange-zcc-risk-high .orange-zcc-cross-orders {
+  background: rgba(255, 245, 245, 0.9);
+  border-color: rgba(225, 37, 27, 0.15);
+}
+.orange-zcc-risk-high .orange-zcc-cross-orders-title {
+  color: #c22525;
+}
+.orange-zcc-risk-high .orange-zcc-cross-order {
+  border-color: rgba(225, 37, 27, 0.2);
+}
+.orange-zcc-risk-high .orange-zcc-cross-amount {
+  color: #e1251b;
+}
+
 /* 提示条放在卡片底部，加一点上边距 */
 .orange-zcc-risk-bar {
   margin-top: 10px;
@@ -511,3 +577,238 @@ a.orange-zcc-risk-link:hover {
   margin-left: 8px;
 }
 .orange-zcc-switch-toast .switch-toast-now:hover { background: #66b1ff; }
+
+/* 举报TA按钮 - 纯图标浅红样式 */
+.orange-zcc-risk-bar .orange-zcc-report-btn,
+button.orange-zcc-report-btn {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: rgba(248, 77, 83, 0.12) !important;
+  color: #f84d53 !important;
+  border: 1px solid rgba(248, 77, 83, 0.25) !important;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.orange-zcc-risk-bar .orange-zcc-report-btn:hover,
+button.orange-zcc-report-btn:hover {
+  background: rgba(248, 77, 83, 0.2) !important;
+}
+
+.orange-zcc-risk-bar .orange-zcc-report-btn:active,
+button.orange-zcc-report-btn:active {
+  background: rgba(248, 77, 83, 0.3) !important;
+}
+
+/* 举报弹窗 */
+.zcc-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999999;
+  animation: zccFadeIn 0.2s ease;
+}
+
+@keyframes zccFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.zcc-modal-content {
+  background: white;
+  border-radius: 12px;
+  width: 520px;
+  max-width: 90vw;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: zccSlideUp 0.3s ease;
+}
+
+@keyframes zccSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.zcc-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.zcc-modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.zcc-modal-close {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  color: #999;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.zcc-modal-close:hover {
+  background: #f5f5f5;
+  color: #333;
+}
+
+.zcc-modal-body {
+  padding: 20px;
+}
+
+.zcc-modal-loading {
+  text-align: center;
+  padding: 40px;
+  color: #999;
+  font-size: 14px;
+}
+
+.zcc-error {
+  color: #ff4d4f;
+  text-align: center;
+  padding: 20px;
+  margin-bottom: 12px;
+}
+
+.zcc-form-section {
+  margin-bottom: 20px;
+}
+
+.zcc-form-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.zcc-form-grid {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 10px 12px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.zcc-form-grid label {
+  font-size: 13px;
+  color: #666;
+}
+
+.zcc-form-grid input,
+.zcc-form-grid select {
+  padding: 6px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fafafa;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.zcc-form-grid input[readonly] {
+  background: #f5f5f5;
+  color: #666;
+}
+
+.zcc-form-grid select {
+  background: white;
+}
+
+.zcc-form-field {
+  margin-bottom: 12px;
+}
+
+.zcc-form-field label {
+  display: block;
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 6px;
+}
+
+.zcc-form-field textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  font-size: 13px;
+  resize: vertical;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+.zcc-required {
+  color: #ff4d4f;
+}
+
+.zcc-form-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.zcc-btn {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.zcc-btn-cancel {
+  background: #f5f5f5;
+  color: #666;
+}
+
+.zcc-btn-cancel:hover {
+  background: #e8e8e8;
+}
+
+.zcc-btn-primary {
+  background: linear-gradient(135deg, #ff4d4f, #cf1322);
+  color: white;
+}
+
+.zcc-btn-primary:hover {
+  background: linear-gradient(135deg, #ff7875, #d4380d);
+}
+
+.zcc-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

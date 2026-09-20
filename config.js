@@ -8,6 +8,7 @@ const ZHICHACHA_CONFIG = {
   // ====== 云服务器配置（当前使用） ======
   // 后端API接口地址（最后不要加斜杠）
   apiBaseUrl: 'http://81.71.9.134/api',
+  // apiBaseUrl: 'http://localhost:3001/api',
 
   // 后台管理页面地址（末尾保留斜杠，代码会拼接 #/路由）
   adminUrl: 'http://81.71.9.134/zhichacha/',

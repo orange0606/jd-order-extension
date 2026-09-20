@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Background Service Worker
  * 负责：标签页监听、登录状态管理、数据同步到后端
  */
@@ -173,6 +173,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       batchRiskCheck(message.payload)
         .then(result => sendResponse({ success: true, data: result }))
         .catch(e => sendResponse({ success: false, message: e.message }));
+      return true;
+
+    case 'REPORT_ORDER_INFO':
+      getReportOrderInfo(message.payload.orderNo)
+        .then(data => sendResponse({ success: true, data }))
+        .catch(e => sendResponse({ success: false, msg: e.message }));
+      return true;
+
+    case 'REPORT_SUBMIT':
+      submitReport(message.payload)
+        .then(data => sendResponse({ success: true, data }))
+        .catch(e => sendResponse({ success: false, msg: e.message }));
       return true;
   }
 });
@@ -465,3 +477,50 @@ chrome.contextMenus?.onClicked.addListener(async (info, tab) => {
 });
 
 console.log('[京东订单抓取] Background Service Worker 已启动');
+
+
+/**
+ * 根据订单号查询订单信息（举报用）
+ */
+async function getReportOrderInfo(orderNo) {
+  const { token } = await getCurrentUser();
+  if (!token) {
+    throw new Error('未登录');
+  }
+  const baseUrl = CONFIG.apiBaseUrl;
+  const response = await fetch(`${baseUrl}/report/orderInfo?orderNo=${encodeURIComponent(orderNo)}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  const data = await response.json();
+  if (data.code !== 0) {
+    throw new Error(data.msg || '查询失败');
+  }
+  return data.data;
+}
+
+/**
+ * 提交举报
+ */
+async function submitReport(payload) {
+  const { token } = await getCurrentUser();
+  if (!token) {
+    throw new Error('未登录');
+  }
+  const baseUrl = CONFIG.apiBaseUrl;
+  const response = await fetch(`${baseUrl}/report/submit`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+  if (data.code !== 0) {
+    throw new Error(data.msg || '提交失败');
+  }
+  return data.data;
+}

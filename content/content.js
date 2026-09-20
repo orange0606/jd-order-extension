@@ -1128,6 +1128,7 @@
         ? `<a class="orange-zcc-risk-info-item orange-zcc-risk-link" href="${reportUrl(risk.buyerAccount)}" target="_blank" title="点击查看该账号举报记录">👤 ${risk.buyerAccount}</a>` : '';
       const addressHtml = risk.buyerAddress
         ? `<a class="orange-zcc-risk-info-item orange-zcc-risk-link" href="${reportUrl(risk.buyerAddress)}" target="_blank" title="点击查看该地址举报记录">📍 ${risk.buyerAddress}</a>` : '';
+
       const similarityHtml = risk.addressSimilarity > 0
         ? `<span class="orange-zcc-risk-info-item">相似度${risk.addressSimilarity}%</span>` : '';
 
@@ -1136,6 +1137,25 @@
         ? `<span class="orange-zcc-risk-tags">${risk.tags.map(t => `<span class="orange-zcc-risk-tag">${t}</span>`).join('')}</span>`
         : '';
 
+      // 举报TA按钮
+      const reportBtnHtml = risk.orderNo
+        ? `<button class="orange-zcc-report-btn" data-order-no="${risk.orderNo}" title="举报这个买家">📨</button>`
+        : '';
+
+      // 跨店铺下单记录（时间+金额，最多前5个）
+      const crossShopOrdersHtml = (risk.crossShopOrders && risk.crossShopOrders.length > 0)
+        ? `<div class="orange-zcc-cross-orders" title="该买家在其他店铺的下单记录">
+             <span class="orange-zcc-cross-orders-title">🔄 跨店下单:</span>
+             <div class="orange-zcc-cross-orders-list">
+               ${risk.crossShopOrders.slice(0, 5).map(o =>
+                 `<span class="orange-zcc-cross-order">
+                   <span class="orange-zcc-cross-time">${o.time}</span>
+                   <span class="orange-zcc-cross-amount">￥${Number(o.amount).toFixed(1)}</span>
+                 </span>`
+               ).join('')}
+             </div>
+           </div>` : '';
+
       bar.innerHTML = `
         <span class="orange-zcc-risk-icon">${icon}</span>
         <span class="orange-zcc-risk-level">${levelText}</span>
@@ -1143,11 +1163,211 @@
         ${addressHtml}
         ${similarityHtml}
         ${tagsHtml}
+        ${reportBtnHtml}
+        ${crossShopOrdersHtml}
       `;
+
+      // 绑定举报按钮点击事件
+      const reportBtn = bar.querySelector('.orange-zcc-report-btn');
+      if (reportBtn) {
+        reportBtn.addEventListener('click', () => {
+          openReportModal(risk.orderNo);
+        });
+      }
 
       // 插入到卡片最后面
       card.appendChild(bar);
     });
+  }
+
+  // ==================== 举报TA弹窗 ====================
+
+  function openReportModal(orderNo) {
+    // 先移除已存在的弹窗
+    const existing = document.getElementById('zcc-report-modal-overlay');
+    if (existing) existing.remove();
+
+    // 创建遮罩
+    const overlay = document.createElement('div');
+    overlay.id = 'zcc-report-modal-overlay';
+    overlay.className = 'zcc-modal-overlay';
+
+    overlay.innerHTML = `
+      <div class="zcc-modal-content">
+        <div class="zcc-modal-header">
+          <h3>🚩 举报买家</h3>
+          <button class="zcc-modal-close">&times;</button>
+        </div>
+        <div class="zcc-modal-body">
+          <div class="zcc-modal-loading">正在加载订单信息...</div>
+          <form id="zcc-report-form" style="display:none">
+            <div class="zcc-form-section">
+              <h4>订单信息（自动填充）</h4>
+              <div class="zcc-form-grid">
+                <label>订单号</label>
+                <input type="text" id="report-order-no">
+                <label>买家账号</label>
+                <input type="text" id="report-buyer-account">
+                <label>收货人</label>
+                <input type="text" id="report-receiver-name">
+                <label>联系电话</label>
+                <input type="text" id="report-receiver-phone">
+                <label>收货地址</label>
+                <input type="text" id="report-receiver-address">
+                <label>商品</label>
+                <input type="text" id="report-goods-name">
+                <label>金额</label>
+                <input type="text" id="report-pay-amount">
+              </div>
+            </div>
+            <div class="zcc-form-section">
+              <h4>举报信息</h4>
+              <div class="zcc-form-grid">
+                <label>纠纷类型 <span class="zcc-required">*</span></label>
+                <select id="report-dispute-type" required>
+                  <option value="">请选择</option>
+                  <option value="1">异常索赔</option>
+                  <option value="2">仅退款</option>
+                  <option value="3">异常退货</option>
+                  <option value="4">异常评价</option>
+                  <option value="5">骗取财物</option>
+                  <option value="6">其它</option>
+                </select>
+                <label>发生时间</label>
+                <input type="datetime-local" id="report-happen-time">
+              </div>
+              <div class="zcc-form-field">
+                <label>举报缘由 <span class="zcc-required">*</span></label>
+                <textarea id="report-reason" rows="4" placeholder="请详细描述举报缘由..." required></textarea>
+              </div>
+            </div>
+            <div class="zcc-form-actions">
+              <button type="button" class="zcc-btn zcc-btn-cancel">取消</button>
+              <button type="submit" class="zcc-btn zcc-btn-primary">提交举报</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    // 关闭弹窗
+    const closeModal = () => overlay.remove();
+    overlay.querySelector('.zcc-modal-close').addEventListener('click', closeModal);
+    overlay.querySelector('.zcc-btn-cancel').addEventListener('click', closeModal);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) closeModal();
+    });
+
+    // 加载订单信息
+    loadOrderInfo(orderNo);
+
+    // 提交表单
+    overlay.querySelector('#zcc-report-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await submitReport(overlay, orderNo);
+    });
+  }
+
+  async function loadOrderInfo(orderNo) {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'REPORT_ORDER_INFO',
+        payload: { orderNo }
+      });
+
+      if (!response || !response.success) {
+        throw new Error(response?.msg || '加载失败');
+      }
+
+      const order = response.data;
+      const overlay = document.getElementById('zcc-report-modal-overlay');
+      if (!overlay) return;
+
+      overlay.querySelector('#report-order-no').value = order.order_no || '';
+      overlay.querySelector('#report-buyer-account').value = order.buyer_account || '';
+      overlay.querySelector('#report-receiver-name').value = order.buyer_name || '';
+      overlay.querySelector('#report-receiver-phone').value = order.buyer_phone || '';
+      overlay.querySelector('#report-receiver-address').value = order.buyer_address || '';
+      overlay.querySelector('#report-goods-name').value = order.goods_name || '';
+      overlay.querySelector('#report-pay-amount').value = order.pay_amount ? '￥' + Number(order.pay_amount).toFixed(2) : '';
+
+      // 默认发生时间为当前时间
+      const now = new Date();
+      const localNow = now.getFullYear() + '-' +
+        String(now.getMonth() + 1).padStart(2, '0') + '-' +
+        String(now.getDate()).padStart(2, '0') + 'T' +
+        String(now.getHours()).padStart(2, '0') + ':' +
+        String(now.getMinutes()).padStart(2, '0');
+      overlay.querySelector('#report-happen-time').value = localNow;
+
+      // 隐藏加载，显示表单
+      overlay.querySelector('.zcc-modal-loading').style.display = 'none';
+      overlay.querySelector('#zcc-report-form').style.display = 'block';
+
+    } catch (err) {
+      const overlay = document.getElementById('zcc-report-modal-overlay');
+      if (overlay) {
+        overlay.querySelector('.zcc-modal-loading').innerHTML =
+          `<div class="zcc-error">加载订单信息失败: ${err.message}</div>
+           <button class="zcc-btn zcc-btn-cancel" onclick="document.getElementById('zcc-report-modal-overlay').remove()">关闭</button>`;
+      }
+      console.error('[举报弹窗] 加载订单信息失败:', err);
+    }
+  }
+
+  async function submitReport(overlay, orderNo) {
+    try {
+      const disputeType = overlay.querySelector('#report-dispute-type').value;
+      const happenTime = overlay.querySelector('#report-happen-time').value;
+      const reason = overlay.querySelector('#report-reason').value.trim();
+      const buyerAccount = overlay.querySelector('#report-buyer-account').value;
+      const receiverName = overlay.querySelector('#report-receiver-name').value;
+      const receiverPhone = overlay.querySelector('#report-receiver-phone').value;
+      const receiverAddress = overlay.querySelector('#report-receiver-address').value;
+
+      if (!disputeType) {
+        alert('请选择纠纷类型');
+        return;
+      }
+      if (!reason) {
+        alert('请填写举报缘由');
+        return;
+      }
+
+      const submitBtn = overlay.querySelector('.zcc-btn-primary');
+      submitBtn.disabled = true;
+      submitBtn.textContent = '提交中...';
+
+      const response = await chrome.runtime.sendMessage({
+        type: 'REPORT_SUBMIT',
+        payload: {
+          disputeType: parseInt(disputeType),
+          orderNo,
+          buyerAccount,
+          receiverName,
+          receiverPhone,
+          receiverAddress,
+          reason,
+          happenTime: happenTime ? happenTime.replace('T', ' ') + ':00' : null
+        }
+      });
+
+      if (!response || !response.success) {
+        throw new Error(response?.msg || '提交失败');
+      }
+
+      alert('✅ 举报提交成功！');
+      overlay.remove();
+
+    } catch (err) {
+      alert('❌ 提交失败: ' + err.message);
+      const submitBtn = overlay.querySelector('.zcc-btn-primary');
+      submitBtn.disabled = false;
+      submitBtn.textContent = '提交举报';
+      console.error('[举报提交] 失败:', err);
+    }
   }
 
   async function autoScrapeAllPages() {
