@@ -812,3 +812,44 @@ button.orange-zcc-report-btn:active {
   opacity: 0.6;
   cursor: not-allowed;
 }
+/* 可点击元素鼠标手型 */
+.orange-zcc-clickable {
+  cursor: pointer;
+}
+.orange-zcc-clickable:hover {
+  background: #fff7e6 !important;
+}
+
+/* 新版本更新弹窗 */
+.zcc-update-modal-box {
+  width: 460px;
+  max-width: 90vw;
+}
+.zcc-update-current {
+  color: #909399;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+.zcc-update-section-title {
+  font-weight: bold;
+  color: #303133;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+.zcc-update-changelog {
+  background: #f7f8fa;
+  border-radius: 6px;
+  padding: 12px 14px;
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.zcc-btn-default {
+  color: #606266;
+}
+.zcc-btn-text {
+  color: #909399;
+}

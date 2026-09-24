@@ -1,18 +1,18 @@
-/**
+﻿/**
  * Popup 弹窗逻辑
  */
 
 document.addEventListener('DOMContentLoaded', () => {
+  // 从配置文件读取版本号
+  const verEl = document.getElementById('app-version');
+  if (verEl && typeof ZHICHACHA_CONFIG !== 'undefined') {
+    verEl.textContent = 'v' + ZHICHACHA_CONFIG.version + ' | 智查查风控系统';
+  }
   initApp();
 });
 
-// ==================== 应用初始化 ====================
-
 async function initApp() {
-  bindEvents();
   await checkLoginStatus();
-  await loadSettings();
-  await checkCurrentPage();
   await loadShopList();
 }
 

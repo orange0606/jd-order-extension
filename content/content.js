@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 京东商家后台订单数据抓取 Content Script
  * 匹配URL: https://shop.jd.com/jdm/trade/orders/order-list
  * 
@@ -21,8 +21,14 @@
       }
     })(),
     checkInterval: 2000,
-    maxRetry: 10
+    maxRetry: 10,
+    // 以下字段统一从 config.js 读取
+    version: (typeof ZHICHACHA_CONFIG !== 'undefined' && ZHICHACHA_CONFIG.version) || '1.0.0',
+    apiBaseUrl: (typeof ZHICHACHA_CONFIG !== 'undefined' && ZHICHACHA_CONFIG.apiBaseUrl) || '',
+    riskSearchUrl: (typeof ZHICHACHA_CONFIG !== 'undefined' && ZHICHACHA_CONFIG.riskSearchUrl) || '',
+    extensionDownloadUrl: (typeof ZHICHACHA_CONFIG !== 'undefined' && ZHICHACHA_CONFIG.extensionDownloadUrl) || ''
   };
+    // 单个订单卡片
 
   // ==================== 精确选择器（基于真实DOM） ====================
   const SELECTORS = {
@@ -105,6 +111,14 @@
     return match ? parseInt(match[1]) : 1;
   }
 
+
+  // 店铺名称脱敏：1字原样，2字第二字为*，3字及以上第二三字为*
+  function maskShopName(name) {
+    if (!name) return "";
+    if (name.length === 1) return name;
+    if (name.length === 2) return name[0] + "*";
+    return name[0] + "**" + name.substring(3);
+  }
   // ==================== 核心抓取逻辑 ====================
 
   function isTargetPage() {
@@ -1144,11 +1158,11 @@
 
       // 跨店铺下单记录（时间+金额，最多前5个）
       const crossShopOrdersHtml = (risk.crossShopOrders && risk.crossShopOrders.length > 0)
-        ? `<div class="orange-zcc-cross-orders" title="该买家在其他店铺的下单记录">
+        ? `<div class="orange-zcc-cross-orders">
              <span class="orange-zcc-cross-orders-title">🔄 跨店下单:</span>
              <div class="orange-zcc-cross-orders-list">
                ${risk.crossShopOrders.slice(0, 5).map(o =>
-                 `<span class="orange-zcc-cross-order">
+                 `<span class="orange-zcc-cross-order orange-zcc-clickable" data-action="goRiskSearch" title="${maskShopName(o.ownerAccount)}的小店">
                    <span class="orange-zcc-cross-time">${o.time}</span>
                    <span class="orange-zcc-cross-amount">￥${Number(o.amount).toFixed(1)}</span>
                  </span>`
@@ -1175,6 +1189,15 @@
         });
       }
 
+
+      // 绑定跨店订单点击跳转风险检测页
+      const crossOrderEls = bar.querySelectorAll('.orange-zcc-clickable');
+      crossOrderEls.forEach(el => {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          window.open(CONFIG.riskSearchUrl, '_blank');
+        });
+      });
       // 插入到卡片最后面
       card.appendChild(bar);
     });
@@ -2710,7 +2733,90 @@
 
   // ==================== 初始化 ====================
   
+  // ==================== 插件版本检查 ====================
+
+  // 比较语义化版本号，v1 > v2 返回 1，相等 0，小于 -1
+  function compareVersion(v1, v2) {
+    const parts1 = String(v1).split('.').map(n => parseInt(n) || 0);
+    const parts2 = String(v2).split('.').map(n => parseInt(n) || 0);
+    for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
+      const a = parts1[i] || 0;
+      const b = parts2[i] || 0;
+      if (a > b) return 1;
+      if (a < b) return -1;
+    }
+    return 0;
+  }
+
+  async function checkNewVersion() {
+  async function checkNewVersion() {
+    console.log('[版本检查] 开始检查，当前版本:', CONFIG.version, '接口地址:', CONFIG.apiBaseUrl);
+    try {
+      const res = await fetch(CONFIG.apiBaseUrl + '/extension/latest');
+      const json = await res.json();
+      console.log('[版本检查] 接口返回:', json);
+      if (json.code !== 0 || !json.data) return;
+      const latest = json.data;
+      if (compareVersion(latest.version, CONFIG.version) <= 0) {
+        console.log('[版本检查] 当前已是最新或更新版本，不提示');
+        return;
+      }
+      const ignoredVer = localStorage.getItem('zcc_ignored_version');
+      if (ignoredVer === latest.version) { console.log('[版本检查] 该版本已被忽略'); return; }
+      console.log('[版本检查] 发现新版本，弹窗提示');
+      showUpdateModal(latest);
+    } catch (e) {
+      console.error('[版本检查] 失败（不影响使用）:', e);
+    }
+  }
+  }
+
+  function showUpdateModal(latest) {
+    const exist = document.getElementById('zcc-update-modal');
+    if (exist) exist.remove();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'zcc-modal-overlay';
+    overlay.innerHTML = `
+      <div class="zcc-modal zcc-update-modal-box">
+        <div class="zcc-modal-header">
+          <span class="zcc-modal-title">🎉 发现新版本 v${latest.version}</span>
+          <button class="zcc-modal-close" id="zcc-update-close">×</button>
+        </div>
+        <div class="zcc-modal-body">
+          <div class="zcc-update-current">当前版本：v${CONFIG.version}</div>
+          <div class="zcc-update-section-title">更新内容：</div>
+          <div class="zcc-update-changelog">${latest.changelog || '-'}</div>
+        </div>
+        <div class="zcc-modal-footer">
+          <button class="zcc-btn zcc-btn-default" id="zcc-update-ignore">忽略该版本</button>
+          <button class="zcc-btn zcc-btn-text" id="zcc-update-later">稍后再说</button>
+          <button class="zcc-btn zcc-btn-primary" id="zcc-update-go">立即下载更新</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.remove();
+    overlay.querySelector('#zcc-update-close').addEventListener('click', close);
+    overlay.querySelector('#zcc-update-later').addEventListener('click', close);
+    overlay.querySelector('#zcc-update-ignore').addEventListener('click', () => {
+      localStorage.setItem('zcc_ignored_version', latest.version);
+      close();
+    });
+    overlay.querySelector('#zcc-update-go').addEventListener('click', () => {
+      window.open(CONFIG.extensionDownloadUrl, '_blank');
+      close();
+    });
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) close();
+    });
+  }
+
   async function init() {
+    console.log('%c[版本检查] init已启动，5秒后检查更新', 'color:#e6a23c;font-weight:bold');
+    // 延迟5秒检查插件新版本
+    setTimeout(checkNewVersion, 5000);
+
     // 京巴士物流状态页
     if (isExpressPage()) {
       if (document.readyState === 'loading') {
@@ -2823,3 +2929,5 @@
   });
 
 })();
+
+

@@ -1,17 +1,25 @@
-/**
+﻿/**
  * ==============================================
  * 智查查订单同步助手 - 配置文件
  * 部署时修改这里即可，不用改其他代码
  * ==============================================
  */
 const ZHICHACHA_CONFIG = {
-  // ====== 云服务器配置（当前使用） ======
+  // ====== 插件版本号（更新插件时同步修改，用于检测新版本） ======
+  version: '1.0.3',
   // 后端API接口地址（最后不要加斜杠）
   apiBaseUrl: 'http://81.71.9.134/api',
+  // 本地开发调试时解开下面这行，注释上面线上地址
   // apiBaseUrl: 'http://localhost:3001/api',
 
   // 后台管理页面地址（末尾保留斜杠，代码会拼接 #/路由）
   adminUrl: 'http://81.71.9.134/zhichacha/',
+
+  // 风险检测页面地址（点击跨店订单跳转）
+  riskSearchUrl: 'http://81.71.9.134/zhichacha/#/riskSearch',
+
+  // 浏览器插件下载页面地址（检测到新版本跳转）
+  extensionDownloadUrl: 'http://81.71.9.134/zhichacha/#/extension/download',
 
   // 搜索恶人页面地址
   searchBadGuyUrl: 'http://81.71.9.134/zhichacha/#/villainsSearch',
@@ -25,6 +33,8 @@ const ZHICHACHA_CONFIG = {
   // ====== 本地开发配置（备用，如需本地调试替换上面的值即可） ======
   // apiBaseUrl: 'http://localhost:3001/api',
   // adminUrl: 'http://localhost:8080/',
+  // riskSearchUrl: 'http://localhost:8080/#/riskSearch',
+  // extensionDownloadUrl: 'http://localhost:8080/#/extension/download',
   // searchBadGuyUrl: 'http://localhost:8080/#/villainsSearch',
   // reportUrl: 'http://localhost:8080/#/reportManage?keyword={keyword}&tab=all',
 
