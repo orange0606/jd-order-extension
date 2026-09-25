@@ -10,7 +10,7 @@ const ZHICHACHA_CONFIG = {
   // 后端API接口地址（最后不要加斜杠）
   apiBaseUrl: 'http://81.71.9.134/api',
   // 本地开发调试时解开下面这行，注释上面线上地址
-  apiBaseUrl: 'http://localhost:3001/api',
+  // apiBaseUrl: 'http://localhost:3001/api',
 
   // 后台管理页面地址（末尾保留斜杠，代码会拼接 #/路由）
   adminUrl: 'http://81.71.9.134/zhichacha/',

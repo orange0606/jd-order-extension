@@ -1003,11 +1003,13 @@
       const target = cards[__riskJumpIndex];
       target.scrollIntoView({ behavior: 'smooth', block: 'center' });
       // 页面懒加载元素会改变高度，延迟后二次校正定位
-      setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 350);
+      setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 1000);
       target.classList.add('orange-zcc-jump-flash');
       setTimeout(() => target.classList.remove('orange-zcc-jump-flash'), 1600);
       btn.textContent = __riskJumpIndex >= cards.length - 1
         ? '⬆ 回到第一个风险' : '⬇ 下一个风险订单';
+    });
+
 
     statusEl.appendChild(btn);
   }
