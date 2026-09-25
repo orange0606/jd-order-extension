@@ -182,6 +182,18 @@
             <span class="slider"></span>
           </label>
         </div>
+
+        <div class="setting-item" id="auto-ship-timepick-row" style="display:none;">
+          <div class="setting-info">
+            <div class="setting-name">执行时段</div>
+            <div class="setting-desc">仅在该时段内执行自动发货、同步物流</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <input type="time" id="setting-ship-time-start" value="07:00" style="padding:5px 6px;border:1px solid #dcdfe6;border-radius:4px;font-size:13px;">
+            <span style="color:#909399;font-size:13px;">~</span>
+            <input type="time" id="setting-ship-time-end" value="22:00" style="padding:5px 6px;border:1px solid #dcdfe6;border-radius:4px;font-size:13px;">
+          </div>
+        </div>
       </div>
     </div>
 

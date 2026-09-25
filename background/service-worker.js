@@ -186,8 +186,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         .then(data => sendResponse({ success: true, data }))
         .catch(e => sendResponse({ success: false, msg: e.message }));
       return true;
+
+    case 'CHECK_LATEST_VERSION':
+      console.log('[版本检查-SW] 请求地址:', CONFIG.apiBaseUrl + '/extension/latest');
+      fetch(CONFIG.apiBaseUrl + '/extension/latest')
+        .then(r => { console.log('[版本检查-SW] 响应状态:', r.status); return r.json(); })
+        .then(data => { console.log('[版本检查-SW] 成功:', data); sendResponse({ success: true, data }); })
+        .catch(e => { console.error('[版本检查-SW] 失败:', e); sendResponse({ success: false, msg: e.message }); });
+      return true;
   }
 });
+
 
 // ==================== 业务逻辑 ====================
 

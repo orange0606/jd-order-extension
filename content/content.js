@@ -979,6 +979,39 @@
     `;
   }
 
+
+  // 状态栏添加「跳转下一个风险订单」按钮（只跳高、中风险）
+  let __riskJumpIndex = -1;
+  function addJumpRiskButton(total) {
+    const statusEl = document.getElementById('scraper-status');
+    if (!statusEl) return;
+    // 移除旧按钮
+    const oldBtn = document.getElementById('jump-risk-btn');
+    if (oldBtn) oldBtn.remove();
+
+    const btn = document.createElement('button');
+    btn.id = 'jump-risk-btn';
+    btn.className = 'orange-zcc-jump-risk-btn';
+    btn.textContent = '⬇ 跳转风险订单';
+    btn.title = '点击滚动到下一个高/中风险订单';
+
+    btn.addEventListener('click', () => {
+      const cards = Array.from(document.querySelectorAll('.orange-zcc-risk-high, .orange-zcc-risk-medium'));
+      if (cards.length === 0) return;
+      __riskJumpIndex++;
+      if (__riskJumpIndex >= cards.length) __riskJumpIndex = 0;
+      const target = cards[__riskJumpIndex];
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // 页面懒加载元素会改变高度，延迟后二次校正定位
+      setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 350);
+      target.classList.add('orange-zcc-jump-flash');
+      setTimeout(() => target.classList.remove('orange-zcc-jump-flash'), 1600);
+      btn.textContent = __riskJumpIndex >= cards.length - 1
+        ? '⬆ 回到第一个风险' : '⬇ 下一个风险订单';
+
+    statusEl.appendChild(btn);
+  }
+
   // 定时查单发货独立状态
   function updateShipStatus(text, type = 'info') {
     if (!floatingPanel) return;
@@ -1074,8 +1107,8 @@
 
       // 在页面订单上标记风险
       renderRiskToPage(results);
-
-      // 5秒后自动折叠面板
+      renderRiskToPage(results);
+      if (high + medium > 0) addJumpRiskButton(high + medium);
       setTimeout(() => {
         if (floatingPanel) {
           floatingPanel.classList.add('minimized');
@@ -1212,7 +1245,7 @@
 
     // 创建遮罩
     const overlay = document.createElement('div');
-    overlay.id = 'zcc-report-modal-overlay';
+    overlay.id = 'zcc-update-modal';
     overlay.className = 'zcc-modal-overlay';
 
     overlay.innerHTML = `
@@ -2695,17 +2728,15 @@
         return true;
 
       case 'SETTINGS_UPDATED': {
-        // 用户在设置面板点了保存：切换店铺模式下重置轮转，立即刷新计划并马上执行一遍
+        // 设置已更新，重新设置定时器；切换店铺模式下重置轮转
         const ns = message.settings || {};
         if (isTargetPage() && ns.autoShip && ns.autoSwitchShop && !isSwitchingShop) {
-          console.log('%c[切换店铺] 检测到设置已保存，重置轮转并立即执行一遍', 'color:#f56c6c;font-weight:bold;');
           if (shopSwitchTimer) { clearTimeout(shopSwitchTimer); shopSwitchTimer = null; }
           removeSwitchCountdown();
           chrome.storage.local.remove(SHOP_SWITCH_STATE_KEY, () => {
             setupAutoShipTimer();
           });
         } else {
-          // 设置已更新，重新设置定时器
           setupAutoShipTimer();
         }
         if (isExpressPage()) setupExpressTimer();
@@ -2749,16 +2780,18 @@
   }
 
   async function checkNewVersion() {
-  async function checkNewVersion() {
-    console.log('[版本检查] 开始检查，当前版本:', CONFIG.version, '接口地址:', CONFIG.apiBaseUrl);
+    console.log('[版本检查] 开始检查，当前版本:', CONFIG.version);
     try {
-      const res = await fetch(CONFIG.apiBaseUrl + '/extension/latest');
-      const json = await res.json();
+      const msgResp = await new Promise(resolve => {
+        chrome.runtime.sendMessage({ type: 'CHECK_LATEST_VERSION' }, r => resolve(r));
+      });
+      if (!msgResp || !msgResp.success) throw new Error((msgResp && msgResp.msg) || '请求失败');
+      const json = msgResp.data;
       console.log('[版本检查] 接口返回:', json);
       if (json.code !== 0 || !json.data) return;
       const latest = json.data;
       if (compareVersion(latest.version, CONFIG.version) <= 0) {
-        console.log('[版本检查] 当前已是最新或更新版本，不提示');
+        console.log('[版本检查] 当前已是最新版本，不提示');
         return;
       }
       const ignoredVer = localStorage.getItem('zcc_ignored_version');
@@ -2769,46 +2802,54 @@
       console.error('[版本检查] 失败（不影响使用）:', e);
     }
   }
+
+  function formatVersionDate(d) {
+    if (!d) return '-';
+    const date = new Date(d);
+    if (isNaN(date.getTime())) return String(d).substring(0, 10);
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
   }
 
   function showUpdateModal(latest) {
-    const exist = document.getElementById('zcc-update-modal');
+    const exist = document.getElementById('zcc-update-toast');
     if (exist) exist.remove();
 
-    const overlay = document.createElement('div');
-    overlay.className = 'zcc-modal-overlay';
-    overlay.innerHTML = `
-      <div class="zcc-modal zcc-update-modal-box">
-        <div class="zcc-modal-header">
-          <span class="zcc-modal-title">🎉 发现新版本 v${latest.version}</span>
-          <button class="zcc-modal-close" id="zcc-update-close">×</button>
-        </div>
-        <div class="zcc-modal-body">
-          <div class="zcc-update-current">当前版本：v${CONFIG.version}</div>
-          <div class="zcc-update-section-title">更新内容：</div>
-          <div class="zcc-update-changelog">${latest.changelog || '-'}</div>
-        </div>
-        <div class="zcc-modal-footer">
-          <button class="zcc-btn zcc-btn-default" id="zcc-update-ignore">忽略该版本</button>
-          <button class="zcc-btn zcc-btn-text" id="zcc-update-later">稍后再说</button>
-          <button class="zcc-btn zcc-btn-primary" id="zcc-update-go">立即下载更新</button>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
+    const toast = document.createElement('div');
+    toast.id = 'zcc-update-toast';
+    toast.className = 'zcc-update-toast';
+    toast.innerHTML = `
+      <button class="zcc-toast-close" id="zcc-toast-close">×</button>
+      <div class="zcc-toast-new"><span class="zcc-toast-icon">🎉</span>发现新版本 <b>v${latest.version}</b><span class="zcc-toast-time">更新时间：${formatVersionDate(latest.releaseDate)}</span></div>
+      <div class="zcc-toast-desc">${latest.changelog || '-'}</div>
+      <div class="zcc-toast-actions">
+        <button class="zcc-toast-btn zcc-toast-ignore" id="zcc-toast-ignore">忽略该版本</button>
+        <button class="zcc-toast-btn zcc-toast-primary" id="zcc-toast-go">立即更新</button>
+      </div>
+      <div class="zcc-toast-footer">智查查风控系统 v${CONFIG.version}</div>`;
+    document.body.appendChild(toast);
+    console.log('[版本检查] 通知条已创建，尺寸:', toast.offsetWidth, toast.offsetHeight, '元素:', toast);
+    // 强制内联样式兜底，确保可见
+    toast.style.cssText += 'position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:2147483647;background:#fff;display:block;box-shadow:0 8px 30px rgba(0,0,0,.15);border-radius:10px;';
 
-    const close = () => overlay.remove();
-    overlay.querySelector('#zcc-update-close').addEventListener('click', close);
-    overlay.querySelector('#zcc-update-later').addEventListener('click', close);
-    overlay.querySelector('#zcc-update-ignore').addEventListener('click', () => {
+    let autoCloseTimer;
+    const close = () => { clearTimeout(autoCloseTimer); toast.remove(); };
+    // 20秒无操作自动关闭
+    autoCloseTimer = setTimeout(close, 20000);
+    // 鼠标移入暂停自动关闭，移出重新计时
+    toast.addEventListener('mouseenter', () => clearTimeout(autoCloseTimer));
+    toast.addEventListener('mouseleave', () => { autoCloseTimer = setTimeout(close, 20000); });
+
+    toast.querySelector('#zcc-toast-close').addEventListener('click', close);
+    toast.querySelector('#zcc-toast-ignore').addEventListener('click', () => {
       localStorage.setItem('zcc_ignored_version', latest.version);
       close();
     });
-    overlay.querySelector('#zcc-update-go').addEventListener('click', () => {
+    toast.querySelector('#zcc-toast-go').addEventListener('click', () => {
       window.open(CONFIG.extensionDownloadUrl, '_blank');
       close();
-    });
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) close();
     });
   }
 
@@ -2929,5 +2970,6 @@
   });
 
 })();
+
 
 

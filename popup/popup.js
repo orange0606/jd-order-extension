@@ -8,8 +8,10 @@ document.addEventListener('DOMContentLoaded', () => {
   if (verEl && typeof ZHICHACHA_CONFIG !== 'undefined') {
     verEl.textContent = 'v' + ZHICHACHA_CONFIG.version + ' | 智查查风控系统';
   }
+  bindEvents();
   initApp();
 });
+
 
 async function initApp() {
   await checkLoginStatus();
@@ -33,11 +35,18 @@ function bindEvents() {
   document.getElementById('btn-save-settings').addEventListener('click', saveSettings);
 
   // 定时查单发货开关联动
+  // 定时查单发货开关联动
   document.getElementById('setting-auto-ship').addEventListener('change', (e) => {
     const on = e.target.checked;
     document.getElementById('auto-ship-interval-row').style.display = on ? 'flex' : 'none';
     document.getElementById('auto-switch-shop-row').style.display = on ? 'flex' : 'none';
     document.getElementById('auto-ship-timerange-row').style.display = on ? 'flex' : 'none';
+    if (!on) document.getElementById('auto-ship-timepick-row').style.display = 'none';
+  });
+
+  // 时间段开关联动
+  document.getElementById('setting-auto-ship-timerange').addEventListener('change', (e) => {
+    document.getElementById('auto-ship-timepick-row').style.display = e.target.checked ? 'flex' : 'none';
   });
 
   // 同步物流开关联动
@@ -55,6 +64,7 @@ function showView(viewId) {
 
 function showSettingsView() {
   showView('settings-view');
+  loadSettings();
 }
 
 function showMainView() {
@@ -261,16 +271,17 @@ async function loadSettings() {
     document.getElementById('setting-auto-ship-timerange').checked = settings.autoShipTimeRange === true;
     // 自动切换店铺开关
     document.getElementById('setting-auto-switch-shop').checked = settings.autoSwitchShop === true;
-    // 时间段从 config.js 读取，不允许用户修改
     const cfg = (typeof ZHICHACHA_CONFIG !== 'undefined') ? ZHICHACHA_CONFIG : {};
     const timeStart = settings.autoShipTimeStart || cfg.autoShipTimeStart || '07:00';
     const timeEnd = settings.autoShipTimeEnd || cfg.autoShipTimeEnd || '22:00';
-    document.getElementById('auto-ship-timerange-desc').textContent = `勾选后仅在 ${timeStart} ~ ${timeEnd} 内自动执行`;
+    document.getElementById('setting-ship-time-start').value = timeStart;
+    document.getElementById('setting-ship-time-end').value = timeEnd;
+    document.getElementById('auto-ship-timerange-desc').textContent = `勾选后仅在 '${timeStart} ~ ${timeEnd}' 内自动执行`;
     document.getElementById('auto-ship-interval-row').style.display = settings.autoShip ? 'flex' : 'none';
     document.getElementById('auto-switch-shop-row').style.display = settings.autoShip ? 'flex' : 'none';
     document.getElementById('auto-ship-timerange-row').style.display = settings.autoShip ? 'flex' : 'none';
+    document.getElementById('auto-ship-timepick-row').style.display = (settings.autoShip && settings.autoShipTimeRange) ? 'flex' : 'none';
     document.getElementById('setting-auto-sync-express').checked = settings.autoSyncExpress === true;
-    document.getElementById('setting-sync-express-interval').value = settings.autoSyncExpressInterval || 120;
     document.getElementById('sync-express-interval-row').style.display = settings.autoSyncExpress ? 'flex' : 'none';
   } catch (e) {
     console.error('加载设置失败:', e);
@@ -280,23 +291,21 @@ async function loadSettings() {
 async function saveSettings() {
   const interval = parseInt(document.getElementById('setting-auto-ship-interval').value, 10) || 30;
   const expressInterval = parseInt(document.getElementById('setting-sync-express-interval').value, 10) || 120;
-  // 时间段从 config.js 读取
-  const cfg = (typeof ZHICHACHA_CONFIG !== 'undefined') ? ZHICHACHA_CONFIG : {};
   const autoShipOn = document.getElementById('setting-auto-ship').checked;
+  const userStart = document.getElementById('setting-ship-time-start').value || '07:00';
+  const userEnd = document.getElementById('setting-ship-time-end').value || '22:00';
   const newSettings = {
     autoSync: document.getElementById('setting-auto-sync').checked,
     showNotification: document.getElementById('setting-notification').checked,
     autoShip: autoShipOn,
     autoShipInterval: Math.max(1, Math.min(720, interval)),
-    // 关闭定时查单发货时，自动切换店铺一并关闭
     autoSwitchShop: autoShipOn && document.getElementById('setting-auto-switch-shop').checked,
     autoShipTimeRange: document.getElementById('setting-auto-ship-timerange').checked,
-    autoShipTimeStart: cfg.autoShipTimeStart || '07:00',
-    autoShipTimeEnd: cfg.autoShipTimeEnd || '22:00',
+    autoShipTimeStart: userStart,
+    autoShipTimeEnd: userEnd,
     autoSyncExpress: document.getElementById('setting-auto-sync-express').checked,
     autoSyncExpressInterval: Math.max(1, Math.min(1440, expressInterval))
   };
-
   // 先读取现有设置合并（保留 shopId/lastShipTime 等字段），直接写入 storage
   // 直接写入 storage 比发消息给 service-worker 更可靠（避免 SW 休眠导致延迟）
   const result = await chrome.storage.local.get('jd_settings');
