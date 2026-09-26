@@ -985,31 +985,34 @@
   function addJumpRiskButton(total) {
     const statusEl = document.getElementById('scraper-status');
     if (!statusEl) return;
-    // 移除旧按钮
     const oldBtn = document.getElementById('jump-risk-btn');
     if (oldBtn) oldBtn.remove();
+
+    // 固定风险卡片列表和总数，避免懒加载/虚拟滚动导致数量变化
+    const cards = Array.from(document.querySelectorAll('[data-orange-jbs-order-id].orange-zcc-risk-high, [data-orange-jbs-order-id].orange-zcc-risk-medium'));
+    const cardTotal = cards.length;
+    let jumpIndex = -1;
+    if (cardTotal === 0) return;
 
     const btn = document.createElement('button');
     btn.id = 'jump-risk-btn';
     btn.className = 'orange-zcc-jump-risk-btn';
-    btn.textContent = '⬇ 跳转风险订单';
+    btn.textContent = `⬇ 下一个风险 (0/${cardTotal})`;
     btn.title = '点击滚动到下一个高/中风险订单';
 
     btn.addEventListener('click', () => {
-      const cards = Array.from(document.querySelectorAll('.orange-zcc-risk-high, .orange-zcc-risk-medium'));
-      if (cards.length === 0) return;
-      __riskJumpIndex++;
-      if (__riskJumpIndex >= cards.length) __riskJumpIndex = 0;
-      const target = cards[__riskJumpIndex];
+      jumpIndex++;
+      if (jumpIndex >= cardTotal) jumpIndex = 0;
+      const target = cards[jumpIndex];
+      const cur = jumpIndex + 1;
+      const label = cur >= cardTotal ? '回到第一个' : '下一个风险';
+      btn.textContent = `⬇ ${label} (${cur}/${cardTotal})`;
       target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      // 页面懒加载元素会改变高度，延迟后二次校正定位
       setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 1000);
+      setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 1500);
       target.classList.add('orange-zcc-jump-flash');
-      setTimeout(() => target.classList.remove('orange-zcc-jump-flash'), 1600);
-      btn.textContent = __riskJumpIndex >= cards.length - 1
-        ? '⬆ 回到第一个风险' : '⬇ 下一个风险订单';
+      setTimeout(() => target.classList.remove('orange-zcc-jump-flash'), 1800);
     });
-
 
     statusEl.appendChild(btn);
   }

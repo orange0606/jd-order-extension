@@ -1,7 +1,7 @@
 ﻿{
   "manifest_version": 3,
   "name": "京东订单数据抓取助手",
-  "version": "1.2.0",
+  "version": "1.0.5",
   "description": "自动检测京东商家后台订单页面，抓取订单数据并同步到智查查风控系统",
   "permissions": [
     "storage",
