@@ -991,7 +991,7 @@ button.orange-zcc-report-btn:active {
 
 /* 最终优化版四行通知样式 */
 .zcc-update-toast {
-  width: 380px !important;
+  width: 480px !important;
   padding: 20px 22px 18px !important;
   gap: 8px !important;
   border: 1px solid #f0d9b0;
@@ -1025,7 +1025,13 @@ button.orange-zcc-report-btn:active {
   border-radius: 6px;
   margin: 4px 0 6px;
   border-left: 3px solid #e6a23c;
-  -webkit-line-clamp: 4;
+  display: block !important;
+  -webkit-line-clamp: unset;
+  max-height: 132px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 .zcc-update-toast .zcc-toast-actions {
   gap: 10px !important;

@@ -1250,7 +1250,7 @@
 
     // 创建遮罩
     const overlay = document.createElement('div');
-    overlay.id = 'zcc-update-modal';
+    overlay.id = 'zcc-report-modal-overlay';
     overlay.className = 'zcc-modal-overlay';
 
     overlay.innerHTML = `
@@ -2799,8 +2799,12 @@
         console.log('[版本检查] 当前已是最新版本，不提示');
         return;
       }
-      const ignoredVer = localStorage.getItem('zcc_ignored_version');
-      if (ignoredVer === latest.version) { console.log('[版本检查] 该版本已被忽略'); return; }
+      const snoozeDate = localStorage.getItem('zcc_update_snooze_date');
+      const nowD = new Date();
+      const todayStr = nowD.getFullYear() + '-' +
+        String(nowD.getMonth() + 1).padStart(2, '0') + '-' +
+        String(nowD.getDate()).padStart(2, '0');
+      if (snoozeDate === todayStr) { console.log('[版本检查] 今日已选择不再提醒'); return; }
       console.log('[版本检查] 发现新版本，弹窗提示');
       showUpdateModal(latest);
     } catch (e) {
@@ -2830,12 +2834,12 @@
       <div class="zcc-toast-new"><span class="zcc-toast-icon">🎉</span>发现新版本 <b>v${latest.version}</b><span class="zcc-toast-time">更新时间：${formatVersionDate(latest.releaseDate)}</span></div>
       <div class="zcc-toast-desc">${latest.changelog || '-'}</div>
       <div class="zcc-toast-actions">
-        <button class="zcc-toast-btn zcc-toast-ignore" id="zcc-toast-ignore">忽略该版本</button>
+        <button class="zcc-toast-btn zcc-toast-ignore" id="zcc-toast-ignore">今日不再提醒</button>
         <button class="zcc-toast-btn zcc-toast-primary" id="zcc-toast-go">立即更新</button>
       </div>
       <div class="zcc-toast-footer">智查查风控系统 v${CONFIG.version}</div>`;
     document.body.appendChild(toast);
-    console.log('[版本检查] 通知条已创建，尺寸:', toast.offsetWidth, toast.offsetHeight, '元素:', toast);
+    // console.log('[版本检查] 通知条已创建，尺寸:', toast.offsetWidth, toast.offsetHeight, '元素:', toast);
     // 强制内联样式兜底，确保可见
     toast.style.cssText += 'position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:2147483647;background:#fff;display:block;box-shadow:0 8px 30px rgba(0,0,0,.15);border-radius:10px;';
 
@@ -2849,7 +2853,12 @@
 
     toast.querySelector('#zcc-toast-close').addEventListener('click', close);
     toast.querySelector('#zcc-toast-ignore').addEventListener('click', () => {
-      localStorage.setItem('zcc_ignored_version', latest.version);
+      const d = new Date();
+      const ds = d.getFullYear() + '-' +
+        String(d.getMonth() + 1).padStart(2, '0') + '-' +
+        String(d.getDate()).padStart(2, '0');
+      localStorage.setItem('zcc_update_snooze_date', ds);
+      console.log('[版本检查] 已设置今日不再提醒:', ds);
       close();
     });
     toast.querySelector('#zcc-toast-go').addEventListener('click', () => {
@@ -2914,6 +2923,8 @@
 
       // 启动定时查单发货（独立于同步，不依赖登录）
       setupAutoShipTimer();
+      // 点击订单标签（全部/待付款/待出库/已出库/暂停/锁定/已完成）5秒后自动同步风险检测
+      bindOrderTabClick();
 
       // 1. 获取店铺信息（最多等8秒重试）
       updateStatus('正在识别店铺信息...', 'info');
@@ -2968,6 +2979,48 @@
       }, 10000);
 
     }, 1500);
+  }
+
+  // ==================== 点击订单标签后自动同步风险检测 ====================
+  const ORDER_TAB_IDS = ['tab-allOrders', 'tab-notPay', 'tab-waitOut', 'tab-hadOut', 'tab-suspend', 'tab-locked', 'tab-completed', 'tab-canceled'];
+  let __tabSyncTimer = null;
+  let __tabTickTimer = null;
+  function bindOrderTabClick() {
+    // 事件委托，标签动态渲染也能生效；捕获阶段确保收到点击
+    document.addEventListener('click', (e) => {
+      const tab = e.target.closest && e.target.closest('.jd-tabs__item');
+      if (!tab || ORDER_TAB_IDS.indexOf(tab.id) === -1) return;
+      // console.log('[标签点击] 订单标签:', tab.id);
+      scheduleTabSync(tab.id);
+    }, true);
+  }
+  function scheduleTabSync(tabId) {
+    // 防抖：连续点击以最后一次为准
+    clearTimeout(__tabSyncTimer);
+    clearInterval(__tabTickTimer);
+    let cd = 5;
+    updateStatus(`⏱️ 已切换订单标签，${cd} 秒后自动同步并风险检测...`, 'info');
+    __tabTickTimer = setInterval(() => {
+      cd--;
+      if (cd > 0) {
+        updateStatus(`⏱️ ${cd} 秒后自动同步当前标签页...`, 'info');
+      } else {
+        clearInterval(__tabTickTimer);
+      }
+    }, 1000);
+    __tabSyncTimer = setTimeout(async () => {
+      clearInterval(__tabTickTimer);
+      updateStatus('🔄 正在自动抓取并风险检测...', 'info');
+      try {
+        const result = await scrapeCurrentPage();
+        if (!result || !result.importList || result.importList.length === 0) {
+          updateStatus('ℹ️ 当前标签页暂无可同步订单', 'warning');
+        }
+      } catch (err) {
+        updateStatus(`❌ 自动同步失败: ${err.message}`, 'error');
+        console.error('[标签点击自动同步失败]', err);
+      }
+    }, 5000);
   }
 
   init().catch(e => {
