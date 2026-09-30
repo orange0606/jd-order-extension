@@ -540,7 +540,7 @@ async function submitReport(payload) {
   var KEYWORD = "获取售罄商品信息失败";
   var attached = {}; // tabId -> true
   function isGoods(url) {
-    try { var u = new URL(url); return u.hostname === "mobile.yangkeduo.com" && u.pathname === "/goods1.html"; }
+    try { var u = new URL(url); return u.hostname === "mobile.yangkeduo.com" && u.pathname.indexOf("/goods") === 0; }
     catch (e) { return false; }
   }
   function featureOn(cb) {

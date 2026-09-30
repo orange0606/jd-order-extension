@@ -7,7 +7,7 @@
   'use strict';
 
   function topIsGoods() {
-    try { return window.top.location.hostname === 'mobile.yangkeduo.com' && window.top.location.pathname === '/goods1.html'; }
+    try { return window.top.location.hostname === 'mobile.yangkeduo.com' && window.top.location.pathname.indexOf('/goods') === 0; }
     catch (e) { return false; } // 跨域 iframe 由后台 chrome.scripting 注入
   }
   if (!topIsGoods()) return;

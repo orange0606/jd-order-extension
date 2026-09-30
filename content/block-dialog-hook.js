@@ -16,7 +16,7 @@
   function topIsGoods() {
     try {
       var t = window.top.location;
-      return t.hostname === 'mobile.yangkeduo.com' && t.pathname === '/goods1.html';
+      return t.hostname === 'mobile.yangkeduo.com' && t.pathname.indexOf('/goods') === 0;
     } catch (e) {
       return false; // 跨源 frame 无法判断顶层，交由 host_permissions 注入策略控制
     }
