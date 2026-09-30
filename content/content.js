@@ -2873,6 +2873,10 @@
     setTimeout(checkNewVersion, 5000);
 
     // 京巴士物流状态页
+    // 京巴士页面：启动辅助手动关联订单（不影响物流页逻辑）
+    // 全局绑定辅助手动关联订单（事件委托，仅点到关联按钮才动作，无副作用）
+    bindAssistAssociate();
+
     if (isExpressPage()) {
       if (document.readyState === 'loading') {
         await new Promise(resolve => {
@@ -2985,6 +2989,108 @@
   const ORDER_TAB_IDS = ['tab-allOrders', 'tab-notPay', 'tab-waitOut', 'tab-hadOut', 'tab-suspend', 'tab-locked', 'tab-completed', 'tab-canceled'];
   let __tabSyncTimer = null;
   let __tabTickTimer = null;
+  // ==================== 辅助手动关联订单（京巴士） ====================
+  function assistToast(msg, type) {
+    const exist = document.getElementById('zcc-assist-toast');
+    if (exist) exist.remove();
+    const t = document.createElement('div');
+    t.id = 'zcc-assist-toast';
+    t.className = 'zcc-assist-toast ' + (type === 'error' ? 'is-error' : type === 'success' ? 'is-success' : '');
+    t.textContent = msg;
+    document.body.appendChild(t);
+    clearTimeout(t.__timer);
+    t.__timer = setTimeout(() => t.remove(), 2800);
+  }
+
+  // 以原生方式赋值并派发事件，确保页面框架（element/layui）能感知
+  function setNativeValue(el, value) {
+    const proto = el.tagName === 'SELECT' ? window.HTMLSelectElement.prototype : window.HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value');
+    if (setter && setter.set) setter.set.call(el, value);
+    else el.value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  // 拼多多采购订单号：6位数字-15位数字，如 260930-572585480502505
+  function isValidPddOrderNo(text) {
+    return /^\d{6}-\d{15}$/.test(String(text || '').trim());
+  }
+
+  async function readClipboardText() {
+    try {
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        return await navigator.clipboard.readText();
+      }
+    } catch (e) {
+      console.warn('[辅助关联] 读取剪贴板失败:', e);
+    }
+    return '';
+  }
+
+  function waitForAssistField(selector, timeout) {
+    return new Promise((resolve) => {
+      const start = Date.now();
+      const timer = setInterval(() => {
+        const el = document.querySelector(selector);
+        if (el) { clearInterval(timer); resolve(el); }
+        else if (Date.now() - start > timeout) { clearInterval(timer); resolve(null); }
+      }, 200);
+    });
+  }
+
+  async function fillAssistAssociateDialog(pddOrderNo) {
+    // 等待弹窗表单出现（页面动态渲染）
+    const platform = await waitForAssistField('#j_associationBuyOrderBody-buy-platform', 4000);
+    if (!platform) {
+      console.log('[辅助关联] 未出现关联弹窗');
+      return;
+    }
+    // 1) 采购来源选 拼多多(value=3)
+    setNativeValue(platform, '3');
+
+    // 2) 采购订单号（来自剪贴板，校验格式）
+    const orderInput = document.querySelector('#j_associationBuyOrderBody-buy-order-id');
+    const no = (pddOrderNo || '').trim();
+    if (!no) {
+      assistToast('剪贴板没有采购订单号，请先复制拼多多订单号', 'error');
+    } else if (!isValidPddOrderNo(no)) {
+      assistToast('采购订单号格式不正确（应为 260930-572585480502505 形式）', 'error');
+    } else if (orderInput) {
+      setNativeValue(orderInput, no);
+      assistToast('已选拼多多并填入采购订单号', 'success');
+    }
+
+    // 3) 自动勾选商品列表中的第一个
+    const checkboxes = document.querySelectorAll('.j_associationBuyOrderBody .association-checkbox-input');
+    if (checkboxes.length > 0) {
+      const first = checkboxes[0];
+      if (!first.checked) first.click();
+    }
+  }
+
+  function bindAssistAssociate() {
+    document.addEventListener('click', async (e) => {
+      const btn = e.target.closest && e.target.closest('.j_associationBuyOrder');
+      if (!btn) return;
+      // console.log('[辅助关联] 捕获到手动关联订单按钮点击');
+      // 读取开关
+      const settings = await new Promise(r =>
+        chrome.storage.local.get('jd_settings', s => r(s.jd_settings || {})));
+      if (!settings.assistAssociate) { console.log('[辅助关联] 开关未开启，不处理'); return; }
+      // console.log('[辅助关联] 开关已开启，开始自动填写');
+
+      assistToast('辅助关联订单已开启，正在自动填写...', 'info');
+      // 在用户手势上下文内立即读取剪贴板
+      const clip = await readClipboardText();
+      const pddOrderNo = (clip || '').replace(/\s+/g, '');
+      // 弹窗约1秒后渲染，出现即填写
+      setTimeout(() => fillAssistAssociateDialog(pddOrderNo), 600);
+    }, true);
+    console.log('[辅助关联订单] 已启动');
+  }
+
+
   function bindOrderTabClick() {
     // 事件委托，标签动态渲染也能生效；捕获阶段确保收到点击
     document.addEventListener('click', (e) => {

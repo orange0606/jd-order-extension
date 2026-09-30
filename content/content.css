@@ -1111,3 +1111,33 @@ button.orange-zcc-report-btn:active {
   0%, 100% { box-shadow: 0 0 0 rgba(230,162,60,0); }
   50% { box-shadow: 0 0 14px rgba(230,162,60,0.6); }
 }
+
+/* 辅助手动关联订单 提示条 */
+.zcc-assist-toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2147483647;
+  max-width: 460px;
+  padding: 10px 18px;
+  background: #fff;
+  color: #303133;
+  font-size: 13px;
+  line-height: 1.5;
+  border-radius: 8px;
+  border: 1px solid #f0d9b0;
+  border-left: 4px solid #e6a23c;
+  box-shadow: 0 8px 30px rgba(0,0,0,.15);
+  animation: zccAssistIn .25s ease;
+}
+.zcc-assist-toast.is-success { border-left-color: #67c23a; }
+.zcc-assist-toast.is-error {
+  border-left-color: #f56c6c;
+  color: #f56c6c;
+  background: #fef0f0;
+}
+@keyframes zccAssistIn {
+  from { opacity: 0; transform: translate(-50%, -12px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}

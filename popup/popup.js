@@ -282,6 +282,7 @@ async function loadSettings() {
     document.getElementById('auto-ship-timerange-row').style.display = settings.autoShip ? 'flex' : 'none';
     document.getElementById('auto-ship-timepick-row').style.display = (settings.autoShip && settings.autoShipTimeRange) ? 'flex' : 'none';
     document.getElementById('setting-auto-sync-express').checked = settings.autoSyncExpress === true;
+    document.getElementById('setting-assist-associate').checked = settings.assistAssociate === true;
     document.getElementById('sync-express-interval-row').style.display = settings.autoSyncExpress ? 'flex' : 'none';
   } catch (e) {
     console.error('加载设置失败:', e);
@@ -304,7 +305,8 @@ async function saveSettings() {
     autoShipTimeStart: userStart,
     autoShipTimeEnd: userEnd,
     autoSyncExpress: document.getElementById('setting-auto-sync-express').checked,
-    autoSyncExpressInterval: Math.max(1, Math.min(1440, expressInterval))
+    autoSyncExpressInterval: Math.max(1, Math.min(1440, expressInterval)),
+    assistAssociate: document.getElementById('setting-assist-associate').checked
   };
   // 先读取现有设置合并（保留 shopId/lastShipTime 等字段），直接写入 storage
   // 直接写入 storage 比发消息给 service-worker 更可靠（避免 SW 休眠导致延迟）

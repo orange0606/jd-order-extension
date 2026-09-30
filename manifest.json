@@ -1,4 +1,4 @@
-﻿{
+{
   "manifest_version": 3,
   "name": "京东订单数据抓取助手",
   "version": "1.0.5",
@@ -8,7 +8,8 @@
     "activeTab",
     "scripting",
     "cookies",
-    "tabs"
+    "tabs",
+    "clipboardRead"
   ],
   "host_permissions": [
     "https://shop.jd.com/*",
@@ -26,8 +27,13 @@
         "https://shop.jd.com/jdm/trade/orders/order-list*",
         "https://shop.jd.com/jdm/trade/orders/*"
       ],
-      "js": ["config.js", "content/content.js"],
-      "css": ["content/content.css"],
+      "js": [
+        "config.js",
+        "content/content.js"
+      ],
+      "css": [
+        "content/content.css"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     },
@@ -35,8 +41,13 @@
       "matches": [
         "https://pay.jingbashi.com/*"
       ],
-      "js": ["config.js", "content/content.js"],
-      "css": ["content/content.css"],
+      "js": [
+        "config.js",
+        "content/content.js"
+      ],
+      "css": [
+        "content/content.css"
+      ],
       "run_at": "document_idle",
       "all_frames": true
     }
@@ -57,9 +68,12 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["content/*"],
-      "matches": ["https://shop.jd.com/*"]
+      "resources": [
+        "content/*"
+      ],
+      "matches": [
+        "https://shop.jd.com/*"
+      ]
     }
   ]
 }
-
