@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "京东订单数据抓取助手",
-  "version": "1.0.5",
+  "version": "1.0.9",
   "description": "自动检测京东商家后台订单页面，抓取订单数据并同步到智查查风控系统",
   "permissions": [
     "storage",
@@ -9,14 +9,17 @@
     "scripting",
     "cookies",
     "tabs",
-    "clipboardRead"
+    "clipboardRead",
+    "webNavigation",
+    "debugger"
   ],
   "host_permissions": [
     "https://shop.jd.com/*",
     "https://*.jd.com/*",
     "https://pay.jingbashi.com/*",
     "http://localhost:3000/*",
-    "http://127.0.0.1:3000/*"
+    "http://127.0.0.1:3000/*",
+    "https://mobile.yangkeduo.com/*"
   ],
   "background": {
     "service_worker": "background/service-worker.js"
@@ -50,6 +53,29 @@
       ],
       "run_at": "document_idle",
       "all_frames": true
+    },
+    {
+      "matches": [
+        "https://mobile.yangkeduo.com/*"
+      ],
+      "js": [
+        "content/block-dialog-hook.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_origin_as_fallback": true,
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://mobile.yangkeduo.com/*"
+      ],
+      "js": [
+        "content/block-dialog-inject.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_origin_as_fallback": true
     }
   ],
   "action": {
@@ -73,6 +99,14 @@
       ],
       "matches": [
         "https://shop.jd.com/*"
+      ]
+    },
+    {
+      "resources": [
+        "content/block-dialog-hook.js"
+      ],
+      "matches": [
+        "https://mobile.yangkeduo.com/*"
       ]
     }
   ]

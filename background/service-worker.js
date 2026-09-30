@@ -533,3 +533,129 @@ async function submitReport(payload) {
   }
   return data.data;
 }
+/* ===== 拼多多 goods1.html：售罄原生弹窗处理 =====
+   方案A(无黄条)：MAIN world hook 重写 alert，覆盖现代内核；
+   方案B(兜底)：chrome.debugger 监听 Page.javascriptDialogOpening，自动确定售罄框并转通知。 */
+(function () {
+  var KEYWORD = "获取售罄商品信息失败";
+  var attached = {}; // tabId -> true
+  function isGoods(url) {
+    try { var u = new URL(url); return u.hostname === "mobile.yangkeduo.com" && u.pathname === "/goods1.html"; }
+    catch (e) { return false; }
+  }
+  function featureOn(cb) {
+    try {
+      chrome.storage.local.get("jd_settings", function (r) {
+        var s = (r && r.jd_settings) || {};
+        cb(s.blockSoldOutDialog !== false);
+      });
+    } catch (e) { cb(true); }
+  }
+
+  /* ---- 方案A：hook 注入（保留，现代内核无黄条） ---- */
+  function runInject(tabId, target) {
+    if (!chrome.scripting || !chrome.scripting.executeScript) return;
+    try {
+      var p = chrome.scripting.executeScript({ target: target, files: ["content/block-dialog-hook.js"], world: "MAIN", injectImmediately: true });
+      if (p && p.catch) p.catch(function () {});
+    } catch (e) {}
+  }
+  if (chrome.webNavigation) {
+    chrome.webNavigation.onCommitted.addListener(function (d) {
+      if (d.frameId === 0 && isGoods(d.url)) {
+        runInject(d.tabId, { tabId: d.tabId, allFrames: true });
+        [300, 1000, 2500].forEach(function (ms) { setTimeout(function () { runInject(d.tabId, { tabId: d.tabId, allFrames: true }); }, ms); });
+        featureOn(function (on) { if (on) attachDebugger(d.tabId); else detachDebugger(d.tabId); });
+      } else if (d.frameId === 0) {
+        detachDebugger(d.tabId);
+      }
+    });
+  }
+  if (chrome.tabs && chrome.tabs.onRemoved) chrome.tabs.onRemoved.addListener(function (tabId) { detachDebugger(tabId); });
+
+  /* ---- 方案B：chrome.debugger 自动处理原生对话框 ---- */
+  function attachDebugger(tabId) {
+    if (!chrome.debugger || attached[tabId]) return;
+    try {
+      chrome.debugger.attach({ tabId: tabId }, "1.3", function () {
+        if (chrome.runtime.lastError) { return; }
+        attached[tabId] = true;
+        chrome.debugger.sendCommand({ tabId: tabId }, "Page.enable", function () { void chrome.runtime.lastError; });
+      });
+    } catch (e) {}
+  }
+  function detachDebugger(tabId) {
+    if (!chrome.debugger || !attached[tabId]) return;
+    try { chrome.debugger.detach({ tabId: tabId }, function () { void chrome.runtime.lastError; }); } catch (e) {}
+    delete attached[tabId];
+  }
+
+  // 页面内显示非阻塞 toast（自包含，注入到顶层 frame）
+  function showToastInPage(text) {
+    chrome.tabs.query({ active: true, lastFocusedWindow: true }, function () {});
+    Object.keys(attached).forEach(function (id) {
+      var tabId = Number(id);
+      try {
+        chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          args: [text],
+          func: function (msg) {
+            try {
+              var STYLE_ID = "zcc-dialog-toast-style", CONTAINER_ID = "zcc-dialog-toast-wrap";
+              if (!document.getElementById(STYLE_ID)) {
+                var st = document.createElement("style"); st.id = STYLE_ID;
+                st.textContent = "#"+CONTAINER_ID+"{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:2147483647;display:flex;flex-direction:column;gap:8px;pointer-events:none;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;}" +
+                  ".zcc-dialog-toast{pointer-events:auto;min-width:240px;max-width:420px;display:flex;align-items:flex-start;gap:8px;padding:10px 12px;background:#fff;border:1px solid #f0d9b0;border-left:4px solid #e6a23c;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.15);color:#303133;font-size:13px;line-height:1.5;word-break:break-word;}" +
+                  ".zcc-dialog-toast .zcc-ico{flex:0 0 auto;font-size:15px;line-height:1.4;}.zcc-dialog-toast .zcc-msg{flex:1;}" +
+                  ".zcc-dialog-toast .zcc-x{flex:0 0 auto;cursor:pointer;color:#b0b3b8;font-size:15px;line-height:1.2;padding:0 2px;background:none;border:none;}" +
+                  "@keyframes zccToastIn{from{opacity:0;transform:translateY(-10px);}to{opacity:1;transform:translateY(0);}}";
+                (document.head || document.documentElement).appendChild(st);
+              }
+              function build() {
+                var wrap = document.getElementById(CONTAINER_ID);
+                if (!wrap) { wrap = document.createElement("div"); wrap.id = CONTAINER_ID; document.body.appendChild(wrap); }
+                var item = document.createElement("div"); item.className = "zcc-dialog-toast";
+                var ico = document.createElement("span"); ico.className = "zcc-ico"; ico.textContent = "\u26A0\uFE0F";
+                var txt = document.createElement("span"); txt.className = "zcc-msg"; txt.textContent = String(msg);
+                var close = document.createElement("button"); close.className = "zcc-x"; close.textContent = "\u00D7";
+                item.appendChild(ico); item.appendChild(txt); item.appendChild(close); wrap.appendChild(item);
+                var timer = setTimeout(function () { item.remove(); }, 4000);
+                close.onclick = function () { clearTimeout(timer); item.remove(); };
+              }
+              if (document.body) build(); else window.addEventListener("DOMContentLoaded", build, { once: true });
+            } catch (e) {}
+          }
+        }).catch(function () {});
+      } catch (e) {}
+    });
+  }
+
+  if (chrome.debugger && chrome.debugger.onEvent) {
+    chrome.debugger.onEvent.addListener(function (source, method, params) {
+      if (method !== "Page.javascriptDialogOpening") return;
+      var tabId = source.tabId;
+      var msg = (params && params.message) || "";
+      var type = params && params.type;
+      if (type === "beforeunload" || msg.indexOf(KEYWORD) === -1) return; // 非售罄框：保持原生，不干预
+      // 自动点击“确定”，解除阻塞
+      chrome.debugger.sendCommand({ tabId: tabId }, "Page.handleJavaScriptDialog", { accept: true }, function () { void chrome.runtime.lastError; });
+      console.log("[智查查] 已自动关闭售罄弹窗并转通知:", msg);
+      showToastInPage(msg);
+    });
+  }
+
+  // 开关变化：实时 attach/detach
+  if (chrome.storage && chrome.storage.onChanged) {
+    chrome.storage.onChanged.addListener(function (changes, area) {
+      if (area !== "local" || !changes.jd_settings) return;
+      var s = changes.jd_settings.newValue || {};
+      var on = s.blockSoldOutDialog !== false;
+      chrome.tabs.query({}, function (tabs) {
+        (tabs || []).forEach(function (t) {
+          if (!isGoods(t.url)) return;
+          if (on) attachDebugger(t.id); else detachDebugger(t.id);
+        });
+      });
+    });
+  }
+})();
