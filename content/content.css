@@ -1141,3 +1141,15 @@ button.orange-zcc-report-btn:active {
   from { opacity: 0; transform: translate(-50%, -12px); }
   to { opacity: 1; transform: translate(-50%, 0); }
 }
+
+/* 防卡死刷新确认卡片（顶部非阻塞，30秒倒计时） */
+#zcc-reload-confirm{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:2147483646;font-family:"Microsoft YaHei",Arial,sans-serif;}
+.zcc-reload-card{min-width:300px;max-width:360px;background:#fff;border:1px solid #ebeef5;border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.20);padding:14px 18px;box-sizing:border-box;}
+.zcc-reload-title{font-size:14px;font-weight:bold;color:#303133;margin-bottom:8px;}
+.zcc-reload-msg{font-size:12.5px;color:#606266;line-height:1.7;margin-bottom:12px;}
+.zcc-reload-msg b{color:#e6a23c;font-size:14px;}
+.zcc-reload-btns{display:flex;gap:10px;justify-content:flex-end;}
+.zcc-reload-btn{border:1px solid #dcdfe6;background:#fff;color:#606266;border-radius:6px;padding:6px 16px;font-size:12.5px;cursor:pointer;line-height:1.4;}
+.zcc-reload-btn:hover{border-color:#409eff;color:#409eff;}
+.zcc-reload-btn.primary{background:#409eff;border-color:#409eff;color:#fff;}
+.zcc-reload-btn.primary:hover{background:#66b1ff;border-color:#66b1ff;color:#fff;}

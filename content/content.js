@@ -753,6 +753,9 @@
           <button class="scraper-btn scraper-btn-secondary" id="btn-clear-risk">
             🧹 清除风险提示
           </button>
+          <button class="scraper-btn scraper-btn-secondary" id="btn-anti-crash-reload" title="强制刷新当前页面以释放内存（刷新前会二次确认）">
+            🔄 防卡死刷新
+          </button>
         </div>
         <div class="scraper-actions express-only" id="express-actions" style="display:none;">
           <button class="scraper-btn scraper-btn-primary" id="btn-sync-express">
@@ -800,6 +803,10 @@
     };
     document.getElementById('btn-clear-risk').addEventListener('click', handleClearClick);
     document.getElementById('btn-header-clear').addEventListener('click', handleClearClick);
+
+    // 防卡死刷新按钮：弹出30秒倒计时确认，超时自动刷新，可取消
+    const btnAntiCrashReload = document.getElementById('btn-anti-crash-reload');
+    if (btnAntiCrashReload) btnAntiCrashReload.addEventListener('click', () => showReloadConfirm());
 
     // 最小化/展开
     document.querySelector('.scraper-minimize').addEventListener('click', () => {
@@ -3139,6 +3146,47 @@
 
   // ==================== 防卡死：长时挂机定时自动刷新 + 全局异常兜底 ====================
   let __antiCrashTimer = null;
+  // 统一的“绕过缓存硬刷新”（等同 Ctrl+F5）：后台执行，失败则本地普通整页刷新兜底
+  function doHardReload(reason) {
+    console.warn("[防卡死] 执行绕过缓存硬刷新：" + (reason || "手动触发"));
+    try { updateStatus("🔄 正在强制刷新页面（释放内存）...", "warning"); } catch (e) {}
+    try { chrome.runtime.sendMessage({ type: "ZCC_HARD_RELOAD" }); } catch (e2) {}
+    setTimeout(function () { try { location.reload(); } catch (e3) {} }, 1600);
+  }
+
+  // 防卡死刷新前的确认卡片（顶部非阻塞）：30秒倒计时，不操作则自动刷新，可取消
+  function showReloadConfirm() {
+    if (document.getElementById("zcc-reload-confirm")) return;
+    let remain = 30;
+    let timer = null;
+    const wrap = document.createElement("div");
+    wrap.id = "zcc-reload-confirm";
+    wrap.innerHTML =
+      '<div class="zcc-reload-card">' +
+      '  <div class="zcc-reload-title">🔄 防卡死强制刷新</div>' +
+      '  <div class="zcc-reload-msg">是否立即强制刷新当前页面以释放内存？<br>未保存的操作将被中断。<br><b id="zcc-reload-countdown">30</b> 秒后自动刷新。</div>' +
+      '  <div class="zcc-reload-btns">' +
+      '    <button type="button" class="zcc-reload-btn primary" id="zcc-reload-ok">立即刷新</button>' +
+      '    <button type="button" class="zcc-reload-btn" id="zcc-reload-cancel">取消</button>' +
+      '  </div>' +
+      '</div>';
+    document.body.appendChild(wrap);
+    const cd = wrap.querySelector("#zcc-reload-countdown");
+    const close = function () { if (timer) clearInterval(timer); wrap.remove(); };
+    wrap.querySelector("#zcc-reload-ok").addEventListener("click", function () {
+      close(); doHardReload("手动确认立即刷新");
+    });
+    wrap.querySelector("#zcc-reload-cancel").addEventListener("click", function () {
+      close();
+      try { updateStatus("已取消本次防卡死刷新", "info"); } catch (e) {}
+    });
+    timer = setInterval(function () {
+      remain--;
+      if (cd) cd.textContent = remain;
+      if (remain <= 0) { close(); doHardReload("30秒未操作，自动刷新"); }
+    }, 1000);
+  }
+
   function setupAntiCrash() {
     // 全局异常记录，避免未捕获异常打断后续逻辑
     try {
@@ -3163,9 +3211,8 @@
             const dlg = document.getElementById("fo-layer-old");
             if (dlg && dlg.style && dlg.style.display !== "none") return;
             if (document.querySelector(".zeromodal-container")) return;
-            console.warn("[防卡死] 连续运行超过2小时，自动刷新页面释放内存");
-            try { updateStatus("🔄 防卡死自动刷新，释放内存中...", "warning"); } catch (e) {}
-            setTimeout(function () { try { location.reload(); } catch (e) {} }, 800);
+            console.warn("[防卡死] 连续运行超过2小时，自动硬刷新页面释放内存");
+            doHardReload("连续运行超过2小时");
           } catch (e) { console.warn("[防卡死] 检查异常", e); }
         }, TICK);
         console.log("%c[防卡死] 已启用：连续运行约2小时且空闲时自动刷新页面", "color:#e6a23c;font-weight:bold");
