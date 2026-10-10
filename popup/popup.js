@@ -266,7 +266,9 @@ async function loadSettings() {
     
     document.getElementById('setting-auto-sync').checked = settings.autoSync !== false;
     document.getElementById('setting-notification').checked = settings.showNotification !== false;
+    document.getElementById('setting-anti-crash').checked = settings.autoReloadAntiCrash !== false;
     document.getElementById('setting-block-soldout').checked = settings.blockSoldOutDialog !== false;
+    document.getElementById('setting-soldout-compat').checked = settings.soldoutDebugCompat === true;
     document.getElementById('setting-auto-ship').checked = settings.autoShip === true;
     document.getElementById('setting-auto-ship-interval').value = settings.autoShipInterval || 30;
     document.getElementById('setting-auto-ship-timerange').checked = settings.autoShipTimeRange === true;
@@ -299,7 +301,9 @@ async function saveSettings() {
   const newSettings = {
     autoSync: document.getElementById('setting-auto-sync').checked,
     showNotification: document.getElementById('setting-notification').checked,
+    autoReloadAntiCrash: document.getElementById('setting-anti-crash').checked,
     blockSoldOutDialog: document.getElementById('setting-block-soldout').checked,
+    soldoutDebugCompat: document.getElementById('setting-soldout-compat').checked,
     autoShip: autoShipOn,
     autoShipInterval: Math.max(1, Math.min(720, interval)),
     autoSwitchShop: autoShipOn && document.getElementById('setting-auto-switch-shop').checked,

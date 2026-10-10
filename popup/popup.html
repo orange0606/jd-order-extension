@@ -121,6 +121,17 @@
           </label>
         </div>
 
+        <div class="setting-item">
+          <div class="setting-info">
+            <div class="setting-name">防卡死自动刷新</div>
+            <div class="setting-desc">订单页连续运行约2小时且空闲时自动刷新，释放内存防止页面崩溃中断；执行发货时不会刷新</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="setting-anti-crash" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+
         <div class="settings-group-title">京巴士自动化设置</div>
 
         <div class="setting-item">
@@ -213,6 +224,17 @@
           </div>
           <label class="switch">
             <input type="checkbox" id="setting-block-soldout" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <div class="setting-name">售罄拦截兼容模式</div>
+            <div class="setting-desc">旧内核(如部分360)弹窗拦不住时再开启；开启后商品页会显示"正在调试此浏览器"提示条，现代浏览器无需开启</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="setting-soldout-compat">
             <span class="slider"></span>
           </label>
         </div>

@@ -543,13 +543,15 @@ async function submitReport(payload) {
     try { var u = new URL(url); return u.hostname === "mobile.yangkeduo.com" && u.pathname.indexOf("/goods") === 0; }
     catch (e) { return false; }
   }
-  function featureOn(cb) {
+  function readSettings(cb) {
     try {
       chrome.storage.local.get("jd_settings", function (r) {
-        var s = (r && r.jd_settings) || {};
-        cb(s.blockSoldOutDialog !== false);
+        var st = (r && r.jd_settings) || {};
+        var hookOn = st.blockSoldOutDialog !== false;
+        var debugOn = hookOn && st.soldoutDebugCompat === true; // 调试器兼容模式默认关（避免黄条）
+        cb({ hookOn: hookOn, debugOn: debugOn });
       });
-    } catch (e) { cb(true); }
+    } catch (e) { cb({ hookOn: true, debugOn: false }); }
   }
 
   /* ---- 方案A：hook 注入（保留，现代内核无黄条） ---- */
@@ -563,9 +565,13 @@ async function submitReport(payload) {
   if (chrome.webNavigation) {
     chrome.webNavigation.onCommitted.addListener(function (d) {
       if (d.frameId === 0 && isGoods(d.url)) {
-        runInject(d.tabId, { tabId: d.tabId, allFrames: true });
-        [300, 1000, 2500].forEach(function (ms) { setTimeout(function () { runInject(d.tabId, { tabId: d.tabId, allFrames: true }); }, ms); });
-        featureOn(function (on) { if (on) attachDebugger(d.tabId); else detachDebugger(d.tabId); });
+        readSettings(function (st) {
+          if (st.hookOn) {
+            runInject(d.tabId, { tabId: d.tabId, allFrames: true });
+            [300, 1000, 2500].forEach(function (ms) { setTimeout(function () { runInject(d.tabId, { tabId: d.tabId, allFrames: true }); }, ms); });
+          }
+          if (st.debugOn) attachDebugger(d.tabId); else detachDebugger(d.tabId);
+        });
       } else if (d.frameId === 0) {
         detachDebugger(d.tabId);
       }
@@ -649,13 +655,34 @@ async function submitReport(payload) {
     chrome.storage.onChanged.addListener(function (changes, area) {
       if (area !== "local" || !changes.jd_settings) return;
       var s = changes.jd_settings.newValue || {};
-      var on = s.blockSoldOutDialog !== false;
+      var debugOn = s.blockSoldOutDialog !== false && s.soldoutDebugCompat === true;
       chrome.tabs.query({}, function (tabs) {
         (tabs || []).forEach(function (t) {
           if (!isGoods(t.url)) return;
-          if (on) attachDebugger(t.id); else detachDebugger(t.id);
+          if (debugOn) attachDebugger(t.id); else detachDebugger(t.id);
         });
       });
     });
   }
 })();
+
+/* ===== 绕过缓存硬刷新当前标签页（等同 Ctrl+F5），用于切换店铺时彻底释放内存 ===== */
+chrome.runtime.onMessage.addListener(function (message, sender) {
+  if (message && message.type === "ZCC_HARD_RELOAD" && sender.tab && sender.tab.id != null) {
+    var tabId = sender.tab.id;
+    try {
+      chrome.tabs.reload(tabId, { bypassCache: true }, function () {
+        if (chrome.runtime.lastError) {
+          console.warn("[硬刷新] bypassCache 刷新失败，尝试普通刷新:", chrome.runtime.lastError.message);
+          try { chrome.tabs.reload(tabId, function () { void chrome.runtime.lastError; }); } catch (e) {}
+        } else {
+          console.log("[硬刷新] 已对标签页执行绕过缓存硬刷新:", tabId);
+        }
+      });
+    } catch (e) {
+      console.warn("[硬刷新] 异常:", e && e.message);
+    }
+    return false;
+  }
+  return undefined;
+});

@@ -1810,8 +1810,14 @@
       updateShipStatus(`🚚 每${minutes}分钟，下次 ${nextStr}${rangeText}`, 'info');
 
       autoShipFirstTimer = setTimeout(async () => {
-        await runBatchShipOnce();
-        scheduleNext();
+        try {
+          await runBatchShipOnce();
+        } catch (err) {
+          console.error("[定时发货] 本次执行异常，已自动安排下一次:", err);
+          try { updateShipStatus("⚠️ 本次执行异常，已自动排程下次", "error"); } catch (e2) {}
+        } finally {
+          scheduleNext(); // 无论成功失败都继续下一轮，防止调度链中断
+        }
       }, delay);
   }
 
@@ -2059,7 +2065,7 @@
       const nameOk = shop.shopName && info.shopName &&
         String(info.shopName).trim() === String(shop.shopName).trim();
       if (idOk || nameOk) {
-        console.log('%c[切换店铺] 当前页检测到已切换到目标店铺（未整页刷新），继续查单发货', 'color:#67c23a;font-weight:bold;');
+        console.log('%c[切换店铺] 当前页检测到已切换到目标店铺（局部切换），交由恢复流程统一硬刷后发货', 'color:#67c23a;font-weight:bold;');
         isSwitchingShop = false; // 解除 doSwitch 加的锁，让 resumeAfterSwitch 进入
         resumeAfterSwitch(s);
         return;
@@ -2085,6 +2091,7 @@
     console.log(`%c[切换店铺] 店铺【${queue[state.index] ? queue[state.index].shopName : state.index}】结束（${reason}），推进队列`, 'color:#909399;');
     const finishedIndex = state.index;
     state.index = (state.index + 1) % queue.length;
+    state.hardReloaded = false; // 复位硬刷标记，为下一个店铺切换做准备
     const now = Date.now();
 
     const countdownMs = (switchCfg('shopSwitchCountdown', 30)) * 1000;
@@ -2221,6 +2228,23 @@
   /**
    * 页面刷新后恢复：等待店铺切换完成 → 发货 → 推进
    */
+  // 轮询等待“批量查单发货”按钮出现（绕过缓存硬刷后页面/微应用重新初始化较慢）
+  function waitForBatchShipBtn(timeout) {
+    timeout = timeout || 30000;
+    return new Promise(function (resolve) {
+      const start = Date.now();
+      const check = function () {
+        try {
+          const btn = typeof findBatchShipBtn === "function" ? findBatchShipBtn() : null;
+          if (btn) return resolve(btn);
+        } catch (e) {}
+        if (Date.now() - start > timeout) return resolve(null);
+        setTimeout(check, 3000); // 每3秒检测一次
+      };
+      check();
+    });
+  }
+
   async function resumeAfterSwitch(state) {
     // 同步加锁（必须在第一个 await 之前），防止刷新恢复与局部切换监控重复进入
     if (isSwitchingShop) {
@@ -2241,10 +2265,30 @@
 
       // 等待当前店铺变为目标店铺
       await waitForCurrentShop(shop.shopId, shop.shopName, switchCfg('shopChangeTimeout', 30000));
-      console.log(`%c[切换店铺] 已成功切换到【${shop.shopName}】，2秒后开始查单发货`, 'color:#67c23a;');
+
+      // 切换到位后补一次“绕过缓存硬刷新”（等同 Ctrl+F5），彻底重建页面、释放内存并加载最新资源。
+      // 用 state.hardReloaded 保证每次切换只硬刷一次：硬刷后的新页面再次走到这里会跳过，直接发货。
+      if (!state.hardReloaded) {
+        state.hardReloaded = true;
+        await saveShopSwitchState(state);
+        console.log('%c[切换店铺] 已进入目标店铺，执行一次绕过缓存硬刷新，刷新后自动继续发货', 'color:#e6a23c;font-weight:bold;');
+        try { updateShipStatus(`🔄 正在硬刷新【${shop.shopName}】页面（释放内存）...`, "info"); } catch (e) {}
+        await new Promise(r => setTimeout(r, 600));
+        try { chrome.runtime.sendMessage({ type: 'ZCC_HARD_RELOAD' }); } catch (e2) {}
+        // 后台硬刷未生效时的本地兜底（普通整页刷新）
+        setTimeout(function () { try { window.location.reload(); } catch (e3) {} }, 1600);
+        return; // 本上下文随硬刷销毁，由刷新后的新页面 resumeAfterSwitch 接管（此时 hardReloaded=true）
+      }
+
+      console.log(`%c[切换店铺] 已成功切换到【${shop.shopName}】，等待订单页就绪后发货`, 'color:#67c23a;');
+      updateShipStatus(`⏳ 已切换到【${shop.shopName}】，等待订单页加载完成...`, 'info');
+      // 绕过缓存硬刷后页面/微应用重新初始化较慢：轮询等待“批量查单发货”按钮真正渲染出来（最多30秒）
+      const shipBtnReady = await waitForBatchShipBtn(30000);
+      if (!shipBtnReady) {
+        throw new Error(`切换到【${shop.shopName}】后，订单页长时间未加载出“批量查单发货”按钮，本次跳过待下轮重试`);
+      }
+      await new Promise(r => setTimeout(r, 1000)); // 按钮出现后再稳1秒
       updateShipStatus(`✅ 已切换到【${shop.shopName}】，准备发货`, 'success');
-      // 多等2秒让订单页按钮渲染稳定
-      await new Promise(r => setTimeout(r, 2000));
 
       // 用恢复后的完整队列推进；若队列取不到则用单店兜底
       const useQueue = queue.length ? queue : [shop];
@@ -2929,6 +2973,8 @@
       setupAutoShipTimer();
       // 点击订单标签（全部/待付款/待出库/已出库/暂停/锁定/已完成）5秒后自动同步风险检测
       bindOrderTabClick();
+      // 长时间挂机防卡死（定时自动刷新释放内存 + 全局异常兜底）
+      setupAntiCrash();
 
       // 1. 获取店铺信息（最多等8秒重试）
       updateStatus('正在识别店铺信息...', 'info');
@@ -3090,6 +3136,42 @@
     console.log('[辅助关联订单] 已启动');
   }
 
+
+  // ==================== 防卡死：长时挂机定时自动刷新 + 全局异常兜底 ====================
+  let __antiCrashTimer = null;
+  function setupAntiCrash() {
+    // 全局异常记录，避免未捕获异常打断后续逻辑
+    try {
+      window.addEventListener("error", function (e) { console.warn("[全局error]", e && e.message); });
+      window.addEventListener("unhandledrejection", function (e) { console.warn("[未处理Promise]", e && e.reason); });
+    } catch (e) {}
+
+    try {
+      chrome.storage.local.get("jd_settings", function (res) {
+        const st = (res && res.jd_settings) || {};
+        if (st.autoReloadAntiCrash === false) { console.log("[防卡死] 已关闭自动刷新"); return; }
+        const pageStart = Date.now();
+        const LIMIT = 120 * 60 * 1000;  // 连续运行 120 分钟
+        const TICK = 10 * 60 * 1000;   // 每 10 分钟检查一次
+        if (__antiCrashTimer) clearInterval(__antiCrashTimer);
+        __antiCrashTimer = setInterval(function () {
+          try {
+            if (Date.now() - pageStart < LIMIT) return;
+            // 正在执行发货/切换店铺/有弹窗时跳过，等下一个检查周期
+            try { if (typeof isAutoShipping !== "undefined" && isAutoShipping) return; } catch (e) {}
+            try { if (typeof isSwitchingShop !== "undefined" && isSwitchingShop) return; } catch (e) {}
+            const dlg = document.getElementById("fo-layer-old");
+            if (dlg && dlg.style && dlg.style.display !== "none") return;
+            if (document.querySelector(".zeromodal-container")) return;
+            console.warn("[防卡死] 连续运行超过2小时，自动刷新页面释放内存");
+            try { updateStatus("🔄 防卡死自动刷新，释放内存中...", "warning"); } catch (e) {}
+            setTimeout(function () { try { location.reload(); } catch (e) {} }, 800);
+          } catch (e) { console.warn("[防卡死] 检查异常", e); }
+        }, TICK);
+        console.log("%c[防卡死] 已启用：连续运行约2小时且空闲时自动刷新页面", "color:#e6a23c;font-weight:bold");
+      });
+    } catch (e) {}
+  }
 
   function bindOrderTabClick() {
     // 事件委托，标签动态渲染也能生效；捕获阶段确保收到点击
