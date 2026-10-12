@@ -266,7 +266,6 @@ async function loadSettings() {
     
     document.getElementById('setting-auto-sync').checked = settings.autoSync !== false;
     document.getElementById('setting-notification').checked = settings.showNotification !== false;
-    document.getElementById('setting-anti-crash').checked = settings.autoReloadAntiCrash !== false;
     document.getElementById('setting-block-soldout').checked = settings.blockSoldOutDialog !== false;
     document.getElementById('setting-soldout-compat').checked = settings.soldoutDebugCompat === true;
     document.getElementById('setting-auto-ship').checked = settings.autoShip === true;
@@ -286,7 +285,27 @@ async function loadSettings() {
     document.getElementById('auto-ship-timepick-row').style.display = (settings.autoShip && settings.autoShipTimeRange) ? 'flex' : 'none';
     document.getElementById('setting-auto-sync-express').checked = settings.autoSyncExpress === true;
     document.getElementById('setting-assist-associate').checked = settings.assistAssociate === true;
+    document.getElementById('setting-auto-confirm-virtual').checked = settings.autoConfirmVirtual === true;
+    document.getElementById('setting-canceled-assoc').checked = settings.canceledAssocCheck !== false;
     document.getElementById('sync-express-interval-row').style.display = settings.autoSyncExpress ? 'flex' : 'none';
+
+    // 未登录或账号停用：8 项自动化功能强制关闭，且不允许打开
+    const gatedIds = [
+      'setting-auto-sync', 'setting-notification', 'setting-auto-switch-shop',
+      'setting-canceled-assoc', 'setting-assist-associate', 'setting-auto-confirm-virtual',
+      'setting-block-soldout', 'setting-soldout-compat'
+    ];
+    let loggedIn = true;
+    try {
+      const lr = await sendMessage({ type: 'CHECK_LOGIN' });
+      loggedIn = !!(lr && lr.isLoggedIn);
+    } catch (e) { loggedIn = false; }
+    gatedIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.disabled = !loggedIn;
+      if (!loggedIn) el.checked = false;
+    });
   } catch (e) {
     console.error('加载设置失败:', e);
   }
@@ -301,7 +320,6 @@ async function saveSettings() {
   const newSettings = {
     autoSync: document.getElementById('setting-auto-sync').checked,
     showNotification: document.getElementById('setting-notification').checked,
-    autoReloadAntiCrash: document.getElementById('setting-anti-crash').checked,
     blockSoldOutDialog: document.getElementById('setting-block-soldout').checked,
     soldoutDebugCompat: document.getElementById('setting-soldout-compat').checked,
     autoShip: autoShipOn,
@@ -312,7 +330,9 @@ async function saveSettings() {
     autoShipTimeEnd: userEnd,
     autoSyncExpress: document.getElementById('setting-auto-sync-express').checked,
     autoSyncExpressInterval: Math.max(1, Math.min(1440, expressInterval)),
-    assistAssociate: document.getElementById('setting-assist-associate').checked
+    assistAssociate: document.getElementById('setting-assist-associate').checked,
+    canceledAssocCheck: document.getElementById('setting-canceled-assoc').checked,
+    autoConfirmVirtual: document.getElementById('setting-auto-confirm-virtual').checked
   };
   // 先读取现有设置合并（保留 shopId/lastShipTime 等字段），直接写入 storage
   // 直接写入 storage 比发消息给 service-worker 更可靠（避免 SW 休眠导致延迟）
@@ -327,8 +347,16 @@ async function saveSettings() {
     // storage 已写入成功，SW 通知失败不影响
   }
 
-  showToast('设置已保存', 'success');
+  showToast('设置已保存，正在刷新页面...', 'success');
   showMainView();
+  // 立即刷新当前活动标签页，重置并应用最新配置
+  try {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tab = tabs && tabs[0];
+    if (tab && tab.id != null && /^https?:/.test(tab.url || '')) {
+      chrome.tabs.reload(tab.id);
+    }
+  } catch (e) {}
 }
 
 // ==================== 工具函数 ====================

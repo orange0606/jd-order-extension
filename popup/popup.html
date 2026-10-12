@@ -121,17 +121,6 @@
           </label>
         </div>
 
-        <div class="setting-item">
-          <div class="setting-info">
-            <div class="setting-name">防卡死自动刷新</div>
-            <div class="setting-desc">订单页连续运行约2小时且空闲时自动刷新，释放内存防止页面崩溃中断；执行发货时不会刷新</div>
-          </div>
-          <label class="switch">
-            <input type="checkbox" id="setting-anti-crash" checked>
-            <span class="slider"></span>
-          </label>
-        </div>
-
         <div class="settings-group-title">京巴士自动化设置</div>
 
         <div class="setting-item">
@@ -208,11 +197,33 @@
 
         <div class="setting-item">
           <div class="setting-info">
+            <div class="setting-name">已取消关联单检测</div>
+            <div class="setting-desc">切换到“已取消”订单标签时自动检测仍关联的采购单，提示进度与结果并支持逐个定位，避免漏取消造成货损</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="setting-canceled-assoc" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
             <div class="setting-name">辅助手动关联订单</div>
             <div class="setting-desc">点击"手动关联订单"后自动选拼多多、从剪贴板填采购订单号并勾选首个商品</div>
           </div>
           <label class="switch">
             <input type="checkbox" id="setting-assist-associate">
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <div class="setting-name">自动确认查看虚拟号</div>
+            <div class="setting-desc">点击“采购下单”后自动确认“确定查看虚拟号吗”弹窗，无需手动点确定（最多等待10秒，未出现会提示）</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="setting-auto-confirm-virtual">
             <span class="slider"></span>
           </label>
         </div>

@@ -1142,14 +1142,35 @@ button.orange-zcc-report-btn:active {
   to { opacity: 1; transform: translate(-50%, 0); }
 }
 
-/* 防卡死刷新确认卡片（顶部非阻塞，30秒倒计时） */
-#zcc-reload-confirm{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:2147483646;font-family:"Microsoft YaHei",Arial,sans-serif;}
-.zcc-reload-card{min-width:300px;max-width:360px;background:#fff;border:1px solid #ebeef5;border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.20);padding:14px 18px;box-sizing:border-box;}
-.zcc-reload-title{font-size:14px;font-weight:bold;color:#303133;margin-bottom:8px;}
-.zcc-reload-msg{font-size:12.5px;color:#606266;line-height:1.7;margin-bottom:12px;}
-.zcc-reload-msg b{color:#e6a23c;font-size:14px;}
-.zcc-reload-btns{display:flex;gap:10px;justify-content:flex-end;}
-.zcc-reload-btn{border:1px solid #dcdfe6;background:#fff;color:#606266;border-radius:6px;padding:6px 16px;font-size:12.5px;cursor:pointer;line-height:1.4;}
-.zcc-reload-btn:hover{border-color:#409eff;color:#409eff;}
-.zcc-reload-btn.primary{background:#409eff;border-color:#409eff;color:#fff;}
-.zcc-reload-btn.primary:hover{background:#66b1ff;border-color:#66b1ff;color:#fff;}
+/* 已取消订单 · 采购关联单定位按钮（红色警示） */
+.orange-zcc-jump-assoc-btn { border-color:#f56c6c !important; color:#f56c6c !important; font-weight:bold; }
+.orange-zcc-jump-assoc-btn:hover { background:#fef0f0 !important; }
+/* 定位到关联单时整条高亮闪烁 */
+.orange-zcc-assoc-flash {
+  outline:2px solid #f56c6c !important;
+  outline-offset:2px;
+  border-radius:4px;
+  background:#fef0f0 !important;
+  animation:zccAssocFlash 0.8s ease 3;
+}
+@keyframes zccAssocFlash {
+  0%,100% { box-shadow:0 0 0 rgba(245,108,108,0); background:#fef0f0 !important; }
+  50% { box-shadow:0 0 16px rgba(245,108,108,.65); background:#fde2e2 !important; }
+}
+
+/* 已取消订单存在未处理关联单 · 顶部告警卡片（非阻塞、需手动关闭） */
+#zcc-assoc-alert { position:fixed; top:16px; left:50%; transform:translateX(-50%); z-index:2147483646; font-family:"Microsoft YaHei",Arial,sans-serif; }
+.zcc-assoc-card { min-width:320px; max-width:440px; background:#fff; border:1px solid #fbc4c4; border-left:4px solid #f56c6c; border-radius:10px; box-shadow:0 8px 28px rgba(0,0,0,.20); padding:14px 18px; box-sizing:border-box; }
+.zcc-assoc-title { font-size:14px; font-weight:bold; color:#f56c6c; margin-bottom:8px; }
+.zcc-assoc-msg { font-size:12.5px; color:#606266; line-height:1.7; margin-bottom:12px; }
+.zcc-assoc-msg b { color:#f56c6c; font-size:14px; }
+.zcc-assoc-btns { display:flex; gap:10px; justify-content:flex-end; }
+.zcc-assoc-btn { border:1px solid #dcdfe6; background:#fff; color:#606266; border-radius:6px; padding:6px 16px; font-size:12.5px; cursor:pointer; line-height:1.4; }
+.zcc-assoc-btn:hover { border-color:#f56c6c; color:#f56c6c; }
+.zcc-assoc-btn.primary { background:#f56c6c; border-color:#f56c6c; color:#fff; }
+.zcc-assoc-btn.primary:hover { background:#f78989; border-color:#f78989; color:#fff; }
+/* 关联单检测卡片状态：检测中(蓝) / 无关联(绿)；默认红色=发现关联单 */
+.zcc-assoc-card.is-checking { border-color:#a0cfff; border-left-color:#409eff; }
+.zcc-assoc-card.is-ok { border-color:#b3e19d; border-left-color:#67c23a; }
+.zcc-assoc-title.is-checking { color:#409eff; }
+.zcc-assoc-title.is-ok { color:#67c23a; }

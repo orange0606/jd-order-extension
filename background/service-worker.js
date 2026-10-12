@@ -235,8 +235,13 @@ async function handleOrdersScraped(payload, sender) {
     }
   }
 
-  // 显示通知
-  if (orders.length > 0 && syncResult?.success) {
+  // 显示通知（需登录、同步成功，且设置里开启了“抓取通知”）
+  let notifyEnabled = true;
+  try {
+    const sr = await chrome.storage.local.get('jd_settings');
+    notifyEnabled = (sr.jd_settings || {}).showNotification !== false;
+  } catch (e) {}
+  if (orders.length > 0 && syncResult?.success && notifyEnabled) {
     try {
       let notifyMsg = `成功同步 ${orders.length} 条订单`;
       if (syncResult.insert !== undefined || syncResult.update !== undefined) {
@@ -330,10 +335,32 @@ async function handleLogout() {
 /**
  * 检查登录状态
  */
+let __profileCache = { ts: 0, ok: false };
 async function checkLoginStatus() {
   try {
     const result = await chrome.storage.local.get(CONFIG.tokenStorageKey);
-    return !!result[CONFIG.tokenStorageKey];
+    const token = result[CONFIG.tokenStorageKey];
+    if (!token) { __profileCache = { ts: 0, ok: false }; return false; }
+    const now = Date.now();
+    if (__profileCache.ts && now - __profileCache.ts < 60000 && __profileCache.ok) return true;
+    try {
+      const resp = await fetch(`${CONFIG.apiBaseUrl}/auth/profile`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await resp.json();
+      if (data && data.code === 0) {
+        __profileCache = { ts: now, ok: true };
+        return true;
+      }
+      // 401/403：未登录或账号停用 → 清除本地登录态，使各功能闸门关闭
+      await chrome.storage.local.remove([CONFIG.tokenStorageKey, CONFIG.userStorageKey]);
+      __profileCache = { ts: 0, ok: false };
+      console.warn('[Background] 账号校验未通过，已清除登录态:', data && data.msg);
+      return false;
+    } catch (netErr) {
+      // 网络异常时降级信任本地 token，避免断网导致功能全部停用
+      return true;
+    }
   } catch (e) {
     return false;
   }
@@ -545,13 +572,14 @@ async function submitReport(payload) {
   }
   function readSettings(cb) {
     try {
-      chrome.storage.local.get("jd_settings", function (r) {
+      chrome.storage.local.get(["jd_settings", CONFIG.tokenStorageKey], function (r) {
         var st = (r && r.jd_settings) || {};
-        var hookOn = st.blockSoldOutDialog !== false;
+        var loggedIn = !!(r && r[CONFIG.tokenStorageKey]); // 未登录/账号停用（token被清）时不启用
+        var hookOn = loggedIn && st.blockSoldOutDialog !== false;
         var debugOn = hookOn && st.soldoutDebugCompat === true; // 调试器兼容模式默认关（避免黄条）
         cb({ hookOn: hookOn, debugOn: debugOn });
       });
-    } catch (e) { cb({ hookOn: true, debugOn: false }); }
+    } catch (e) { cb({ hookOn: false, debugOn: false }); }
   }
 
   /* ---- 方案A：hook 注入（保留，现代内核无黄条） ---- */
@@ -653,7 +681,14 @@ async function submitReport(payload) {
   // 开关变化：实时 attach/detach
   if (chrome.storage && chrome.storage.onChanged) {
     chrome.storage.onChanged.addListener(function (changes, area) {
-      if (area !== "local" || !changes.jd_settings) return;
+      if (area !== "local") return;
+      // 登出/账号停用导致 token 被清除：关闭拼多多页调试器
+      if (changes[CONFIG.tokenStorageKey] && !changes[CONFIG.tokenStorageKey].newValue) {
+        chrome.tabs.query({}, function (tabs) {
+          (tabs || []).forEach(function (t) { if (isGoods(t.url)) detachDebugger(t.id); });
+        });
+      }
+      if (!changes.jd_settings) return;
       var s = changes.jd_settings.newValue || {};
       var debugOn = s.blockSoldOutDialog !== false && s.soldoutDebugCompat === true;
       chrome.tabs.query({}, function (tabs) {
@@ -666,23 +701,3 @@ async function submitReport(payload) {
   }
 })();
 
-/* ===== 绕过缓存硬刷新当前标签页（等同 Ctrl+F5），用于切换店铺时彻底释放内存 ===== */
-chrome.runtime.onMessage.addListener(function (message, sender) {
-  if (message && message.type === "ZCC_HARD_RELOAD" && sender.tab && sender.tab.id != null) {
-    var tabId = sender.tab.id;
-    try {
-      chrome.tabs.reload(tabId, { bypassCache: true }, function () {
-        if (chrome.runtime.lastError) {
-          console.warn("[硬刷新] bypassCache 刷新失败，尝试普通刷新:", chrome.runtime.lastError.message);
-          try { chrome.tabs.reload(tabId, function () { void chrome.runtime.lastError; }); } catch (e) {}
-        } else {
-          console.log("[硬刷新] 已对标签页执行绕过缓存硬刷新:", tabId);
-        }
-      });
-    } catch (e) {
-      console.warn("[硬刷新] 异常:", e && e.message);
-    }
-    return false;
-  }
-  return undefined;
-});

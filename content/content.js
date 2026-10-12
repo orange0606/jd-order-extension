@@ -753,9 +753,6 @@
           <button class="scraper-btn scraper-btn-secondary" id="btn-clear-risk">
             🧹 清除风险提示
           </button>
-          <button class="scraper-btn scraper-btn-secondary" id="btn-anti-crash-reload" title="强制刷新当前页面以释放内存（刷新前会二次确认）">
-            🔄 防卡死刷新
-          </button>
         </div>
         <div class="scraper-actions express-only" id="express-actions" style="display:none;">
           <button class="scraper-btn scraper-btn-primary" id="btn-sync-express">
@@ -803,10 +800,6 @@
     };
     document.getElementById('btn-clear-risk').addEventListener('click', handleClearClick);
     document.getElementById('btn-header-clear').addEventListener('click', handleClearClick);
-
-    // 防卡死刷新按钮：弹出30秒倒计时确认，超时自动刷新，可取消
-    const btnAntiCrashReload = document.getElementById('btn-anti-crash-reload');
-    if (btnAntiCrashReload) btnAntiCrashReload.addEventListener('click', () => showReloadConfirm());
 
     // 最小化/展开
     document.querySelector('.scraper-minimize').addEventListener('click', () => {
@@ -1022,6 +1015,227 @@
     });
 
     statusEl.appendChild(btn);
+  }
+
+  // ==================== 已取消订单 · 采购关联单检测与定位 ====================
+  let __assocRunTimer = null;
+  let __assocStepTimers = [];
+
+  function isCanceledTab() {
+    return window.location.href.indexOf("tabType=canceled") !== -1;
+  }
+
+  // 登录态闸门：未登录或账号被停用（SW 校验后会清除 token）时，所有自动化功能一律不执行
+  async function zccHasToken() {
+    try {
+      const r = await chrome.storage.local.get('zhichacha_token');
+      return !!(r && r.zhichacha_token);
+    } catch (e) { return false; }
+  }
+
+  // 开关默认开启
+  function getCanceledAssocEnabled() {
+    return new Promise(function (resolve) {
+      try {
+        chrome.storage.local.get(["jd_settings", "zhichacha_token"], function (st) {
+          const cfg = (st && st.jd_settings) || {};
+          resolve(cfg.canceledAssocCheck !== false && !!(st && st.zhichacha_token));
+        });
+      } catch (e) { resolve(false); }
+    });
+  }
+
+  // 收集当前页可见的采购关联单条（.j_buyMsg，data-orderid=京东订单号）
+  function collectAssocEls() {
+    return Array.from(document.querySelectorAll(".j_buyMsg[data-orderid]")).filter(function (el) {
+      const r = el.getBoundingClientRect();
+      return r.height > 0 || el.offsetParent !== null;
+    });
+  }
+
+  // 离开已取消页：清定时器并移除全部关联单UI
+  function removeAssocUI() {
+    clearTimeout(__assocRunTimer);
+    __assocRunTimer = null;
+    __assocStepTimers.forEach(clearTimeout);
+    __assocStepTimers = [];
+    const b = document.getElementById("jump-assoc-btn"); if (b) b.remove();
+    const a = document.getElementById("zcc-assoc-alert"); if (a) a.remove();
+    window.__zccGotoNextAssoc = null;
+  }
+
+  function scrollToAssoc(el) {
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("orange-zcc-assoc-flash");
+    setTimeout(function () { el.scrollIntoView({ behavior: "smooth", block: "center" }); }, 1000);
+    setTimeout(function () { el.scrollIntoView({ behavior: "smooth", block: "center" }); }, 1500);
+    setTimeout(function () { el.classList.remove("orange-zcc-assoc-flash"); }, 2200);
+  }
+
+  const zccSleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+
+  // 找页面主滚动容器（订单内容可能在容器内滚动而非整页）
+  function findAssocScrollContainer() {
+    let best = null, bestH = 0;
+    document.querySelectorAll("div").forEach(function (d) {
+      const cs = getComputedStyle(d);
+      if ((cs.overflowY === "auto" || cs.overflowY === "scroll") && d.clientHeight > 300 && (d.scrollHeight - d.clientHeight) > 300) {
+        if (d.scrollHeight > bestH) { bestH = d.scrollHeight; best = d; }
+      }
+    });
+    return best;
+  }
+
+  // 状态栏“定位关联单”按钮（计数 + 多次滚动校正），定位当前页
+  function renderAssocJumpButton(els) {
+    const statusEl = document.getElementById("scraper-status");
+    const oldBtn = document.getElementById("jump-assoc-btn");
+    if (oldBtn) oldBtn.remove();
+    if (!statusEl || !els.length) return;
+    let idx = -1;
+    const btn = document.createElement("button");
+    btn.id = "jump-assoc-btn";
+    btn.className = "orange-zcc-jump-risk-btn orange-zcc-jump-assoc-btn";
+    btn.title = "已取消订单仍有采购关联单，点击逐个定位，请及时取消采购单避免货损";
+    btn.textContent = "⚠️ 定位关联单 (0/" + els.length + ")";
+    btn.addEventListener("click", function () {
+      idx++;
+      if (idx >= els.length) idx = 0;
+      btn.textContent = "⚠️ 下一个关联单 (" + (idx + 1) + "/" + els.length + ")";
+      scrollToAssoc(els[idx]);
+    });
+    statusEl.appendChild(btn);
+    window.__zccGotoNextAssoc = function () { btn.click(); };
+  }
+
+  function setAssocCard(inner, cls) {
+    let el = document.getElementById("zcc-assoc-alert");
+    if (!el) { el = document.createElement("div"); el.id = "zcc-assoc-alert"; document.body.appendChild(el); }
+    el.innerHTML = '<div class="zcc-assoc-card ' + (cls || "") + '">' + inner + '</div>';
+    return el;
+  }
+
+  function showAssocChecking(step, found, orders) {
+    setAssocCard(
+      '<div class="zcc-assoc-title is-checking">🔍 正在检测已取消京巴士关联单...</div>' +
+      '<div class="zcc-assoc-msg">正在逐屏向下滚动扫描本页（第 <b>' + step + '</b> 屏），已发现 <b>' + found + '</b> 个关联单、<b>' + orders + '</b> 个订单，请稍候。</div>',
+      "is-checking");
+  }
+
+  function showAssocResult(total, orderCount) {
+    const el = setAssocCard(
+      '<div class="zcc-assoc-title">⚠️ 检查完成：发现未处理采购关联单</div>' +
+      '<div class="zcc-assoc-msg">本页检测到 <b>' + total + '</b> 个采购关联单（涉及 <b>' + orderCount + '</b> 个已取消订单）。<br>请及时到采购平台取消对应采购单，避免继续发货造成货物损失。</div>' +
+      '<div class="zcc-assoc-btns">' +
+      '  <button type="button" class="zcc-assoc-btn" id="zcc-assoc-redetect">🔄 重新检测</button>' +
+      '  <button type="button" class="zcc-assoc-btn primary" id="zcc-assoc-locate">立即定位</button>' +
+      '  <button type="button" class="zcc-assoc-btn" id="zcc-assoc-close">我知道了</button>' +
+      '</div>', "");
+    el.querySelector("#zcc-assoc-redetect").addEventListener("click", rerunCanceledAssocCheck);
+    el.querySelector("#zcc-assoc-locate").addEventListener("click", function () {
+      if (typeof window.__zccGotoNextAssoc === "function") window.__zccGotoNextAssoc();
+    });
+    el.querySelector("#zcc-assoc-close").addEventListener("click", function () { el.remove(); });
+  }
+
+  function showAssocEmpty() {
+    const el = setAssocCard(
+      '<div class="zcc-assoc-title is-ok">✅ 检查完成</div>' +
+      '<div class="zcc-assoc-msg">已滚动扫描本页，未发现仍关联在已取消订单上的采购关联单。</div>' +
+      '<div class="zcc-assoc-btns">' +
+      '  <button type="button" class="zcc-assoc-btn primary" id="zcc-assoc-redetect">🔄 重新检测</button>' +
+      '  <button type="button" class="zcc-assoc-btn" id="zcc-assoc-close">我知道了</button>' +
+      '</div>',
+      "is-ok");
+    el.querySelector("#zcc-assoc-redetect").addEventListener("click", rerunCanceledAssocCheck);
+    el.querySelector("#zcc-assoc-close").addEventListener("click", function () { el.remove(); });
+  }
+
+  // 检测当前页：自动逐屏向下滚动、边加载边收集，滚到本页底部后汇总（不触碰分页器、不自动翻页）
+  async function runCanceledAssocCheck() {
+    const enabled = await getCanceledAssocEnabled();
+    if (!enabled) { console.log("[已取消关联单] 开关已关闭，不检测"); return; }
+    if (!isCanceledTab()) return;
+
+    const map = new Map();
+    const seenOrders = new Set();
+    const gather = function () {
+      collectAssocEls().forEach(function (el) {
+        const oid = el.getAttribute("data-orderid");
+        const key = el.getAttribute("data-association-id") || (oid + "_" + el.getAttribute("data-buy-orderid"));
+        if (key && !map.has(key)) map.set(key, el);
+        if (oid) seenOrders.add(oid);
+      });
+    };
+
+    const se = document.scrollingElement || document.documentElement;
+    const startWinY = window.scrollY || se.scrollTop || 0;
+    let container = findAssocScrollContainer();
+    const startCtnY = container ? container.scrollTop : 0;
+
+    const MAX_STEPS = 30;  // 单页内容一般几屏到底，30屏为安全上限
+    const STEP_MS = 600;
+    let noMove = 0;
+
+    showAssocChecking(1, 0, 0);
+    gather();
+
+    for (let step = 1; step <= MAX_STEPS; step++) {
+      if (!isCanceledTab()) return; // 中途切走标签则中止
+      if (step % 8 === 0) container = findAssocScrollContainer();
+      const winBefore = window.scrollY || se.scrollTop || 0;
+      const ctnBefore = container ? container.scrollTop : 0;
+      window.scrollBy(0, Math.floor(window.innerHeight * 0.9));
+      if (container) container.scrollTop += Math.floor(container.clientHeight * 0.9);
+      await zccSleep(STEP_MS);
+      if (!isCanceledTab()) return;
+      gather();
+      showAssocChecking(step + 1, map.size, seenOrders.size);
+      const winAfter = window.scrollY || se.scrollTop || 0;
+      const ctnAfter = container ? container.scrollTop : 0;
+      const moved = (winAfter !== winBefore) || (ctnAfter !== ctnBefore);
+      if (!moved) {
+        noMove++;
+        if (noMove >= 3) break; // 连续3屏滚不动=已到本页底部
+      } else {
+        noMove = 0;
+      }
+    }
+    gather();
+
+    // 扫描结束回到进入时的位置
+    window.scrollTo(0, startWinY);
+    if (container) container.scrollTop = startCtnY;
+    await zccSleep(300);
+    if (!isCanceledTab()) return;
+
+    const els = Array.from(map.values());
+    if (els.length) {
+      renderAssocJumpButton(els);
+      showAssocResult(els.length, seenOrders.size);
+      console.log("[已取消关联单] 本页检查完成：发现 " + els.length + " 个关联单，涉及 " + seenOrders.size + " 个已取消订单");
+    } else {
+      showAssocEmpty();
+      console.log("[已取消关联单] 本页检查完成：未发现关联单");
+    }
+  }
+
+  // 弹窗“重新检测”：清掉旧结果后立即滚动重扫当前页（翻页后使用，无需再等10秒）
+  function rerunCanceledAssocCheck() {
+    const b = document.getElementById("jump-assoc-btn"); if (b) b.remove();
+    const a = document.getElementById("zcc-assoc-alert"); if (a) a.remove();
+    window.__zccGotoNextAssoc = null;
+    runCanceledAssocCheck();
+  }
+
+  // 点“已取消”或直接进入已取消页：等10秒让DOM渲染后再开始检测
+  function scheduleCanceledAssocCheck() {
+    clearTimeout(__assocRunTimer);
+    __assocStepTimers.forEach(clearTimeout);
+    __assocStepTimers = [];
+    ["jump-assoc-btn", "zcc-assoc-alert"].forEach(function (id) { const e = document.getElementById(id); if (e) e.remove(); });
+    window.__zccGotoNextAssoc = null;
+    __assocRunTimer = setTimeout(runCanceledAssocCheck, 10000);
   }
 
   // 定时查单发货独立状态
@@ -1586,6 +1800,11 @@
 
     // 时间范围判断（手动触发不受限制）
     const settings = await new Promise(r => chrome.storage.local.get('jd_settings', s => r(s.jd_settings || {})));
+    if (!(await zccHasToken())) {
+      console.log('[定时发货] 未登录或账号已停用，跳过执行');
+      if (manual) updateShipStatus('⚠️ 未登录或账号已停用，功能不可用', 'error');
+      return;
+    }
     if (!manual && !isInShipTimeRange(settings)) {
       console.log(`[定时发货] 当前时间不在 ${settings.autoShipTimeStart}~${settings.autoShipTimeEnd} 范围内，跳过`);
       return;
@@ -1781,6 +2000,11 @@
 
     chrome.storage.local.get('jd_settings', async (result) => {
       const settings = result.jd_settings || {};
+      if (!(await zccHasToken())) {
+        console.log('[定时发货] 未登录或账号已停用，定时发货/自动切换店铺不启动');
+        updateShipStatus('⚠️ 未登录或账号已停用，自动化功能不可用', 'error');
+        return;
+      }
       if (!settings.autoShip) {
         console.log('[定时发货] 未开启');
         updateShipStatus('🚚 定时查单发货未开启', 'info');
@@ -2098,7 +2322,6 @@
     console.log(`%c[切换店铺] 店铺【${queue[state.index] ? queue[state.index].shopName : state.index}】结束（${reason}），推进队列`, 'color:#909399;');
     const finishedIndex = state.index;
     state.index = (state.index + 1) % queue.length;
-    state.hardReloaded = false; // 复位硬刷标记，为下一个店铺切换做准备
     const now = Date.now();
 
     const countdownMs = (switchCfg('shopSwitchCountdown', 30)) * 1000;
@@ -2273,23 +2496,9 @@
       // 等待当前店铺变为目标店铺
       await waitForCurrentShop(shop.shopId, shop.shopName, switchCfg('shopChangeTimeout', 30000));
 
-      // 切换到位后补一次“绕过缓存硬刷新”（等同 Ctrl+F5），彻底重建页面、释放内存并加载最新资源。
-      // 用 state.hardReloaded 保证每次切换只硬刷一次：硬刷后的新页面再次走到这里会跳过，直接发货。
-      if (!state.hardReloaded) {
-        state.hardReloaded = true;
-        await saveShopSwitchState(state);
-        console.log('%c[切换店铺] 已进入目标店铺，执行一次绕过缓存硬刷新，刷新后自动继续发货', 'color:#e6a23c;font-weight:bold;');
-        try { updateShipStatus(`🔄 正在硬刷新【${shop.shopName}】页面（释放内存）...`, "info"); } catch (e) {}
-        await new Promise(r => setTimeout(r, 600));
-        try { chrome.runtime.sendMessage({ type: 'ZCC_HARD_RELOAD' }); } catch (e2) {}
-        // 后台硬刷未生效时的本地兜底（普通整页刷新）
-        setTimeout(function () { try { window.location.reload(); } catch (e3) {} }, 1600);
-        return; // 本上下文随硬刷销毁，由刷新后的新页面 resumeAfterSwitch 接管（此时 hardReloaded=true）
-      }
-
       console.log(`%c[切换店铺] 已成功切换到【${shop.shopName}】，等待订单页就绪后发货`, 'color:#67c23a;');
       updateShipStatus(`⏳ 已切换到【${shop.shopName}】，等待订单页加载完成...`, 'info');
-      // 绕过缓存硬刷后页面/微应用重新初始化较慢：轮询等待“批量查单发货”按钮真正渲染出来（最多30秒）
+      // 轮询等待“批量查单发货”按钮真正渲染出来（最多30秒），避免页面未就绪就发货
       const shipBtnReady = await waitForBatchShipBtn(30000);
       if (!shipBtnReady) {
         throw new Error(`切换到【${shop.shopName}】后，订单页长时间未加载出“批量查单发货”按钮，本次跳过待下轮重试`);
@@ -2328,6 +2537,10 @@
       return;
     }
     const settings = await new Promise(r => chrome.storage.local.get('jd_settings', s => r(s.jd_settings || {})));
+    if (!(await zccHasToken())) {
+      updateShipStatus('⚠️ 未登录或账号已停用，自动切换店铺不可用', 'error');
+      return;
+    }
     if (!settings.autoShip || !settings.autoSwitchShop) {
       updateShipStatus('🔁 请先在插件设置中开启"定时查单发货"和"自动切换店铺"', 'error');
       console.warn('[切换店铺] 手动触发失败：未开启自动切换店铺');
@@ -2927,6 +3140,7 @@
     // 京巴士页面：启动辅助手动关联订单（不影响物流页逻辑）
     // 全局绑定辅助手动关联订单（事件委托，仅点到关联按钮才动作，无副作用）
     bindAssistAssociate();
+    bindAutoConfirmVirtual();
 
     if (isExpressPage()) {
       if (document.readyState === 'loading') {
@@ -2980,8 +3194,10 @@
       setupAutoShipTimer();
       // 点击订单标签（全部/待付款/待出库/已出库/暂停/锁定/已完成）5秒后自动同步风险检测
       bindOrderTabClick();
-      // 长时间挂机防卡死（定时自动刷新释放内存 + 全局异常兜底）
-      setupAntiCrash();
+      // 直接打开/刷新“已取消”页：同样10秒后检测采购关联单
+      if (window.location.href.indexOf('tabType=canceled') !== -1) {
+        scheduleCanceledAssocCheck();
+      }
 
       // 1. 获取店铺信息（最多等8秒重试）
       updateStatus('正在识别店铺信息...', 'info');
@@ -3020,6 +3236,11 @@
 
       setTimeout(async () => {
         clearInterval(timer);
+        if (!(await zccHasToken())) {
+          updateStatus('⚠️ 未登录或账号已停用，已暂停自动同步', 'warning');
+          console.log('[自动同步] 未登录或账号已停用，跳过自动抓取');
+          return;
+        }
         updateStatus('🔄 正在自动抓取并同步...', 'info');
 
         try {
@@ -3131,6 +3352,7 @@
       const settings = await new Promise(r =>
         chrome.storage.local.get('jd_settings', s => r(s.jd_settings || {})));
       if (!settings.assistAssociate) { console.log('[辅助关联] 开关未开启，不处理'); return; }
+      if (!(await zccHasToken())) { console.log('[辅助关联] 未登录或账号停用，不处理'); return; }
       // console.log('[辅助关联] 开关已开启，开始自动填写');
 
       assistToast('辅助关联订单已开启，正在自动填写...', 'info');
@@ -3143,82 +3365,68 @@
     console.log('[辅助关联订单] 已启动');
   }
 
+  // ==================== 自动确认“查看虚拟号”弹窗（点击采购下单后） ====================
+  let __virtualConfirmTimer = null;
 
-  // ==================== 防卡死：长时挂机定时自动刷新 + 全局异常兜底 ====================
-  let __antiCrashTimer = null;
-  // 统一的“绕过缓存硬刷新”（等同 Ctrl+F5）：后台执行，失败则本地普通整页刷新兜底
-  function doHardReload(reason) {
-    console.warn("[防卡死] 执行绕过缓存硬刷新：" + (reason || "手动触发"));
-    try { updateStatus("🔄 正在强制刷新页面（释放内存）...", "warning"); } catch (e) {}
-    try { chrome.runtime.sendMessage({ type: "ZCC_HARD_RELOAD" }); } catch (e2) {}
-    setTimeout(function () { try { location.reload(); } catch (e3) {} }, 1600);
+  function findVirtualMessageBox() {
+    const boxes = Array.from(document.querySelectorAll('.jd-message-box'));
+    for (const box of boxes) {
+      if (box.offsetParent === null) continue;
+      const title = box.querySelector(".jd-message-box__title");
+      if (title && (title.textContent || "").indexOf("虚拟号") !== -1) return box;
+    }
+    return null;
   }
 
-  // 防卡死刷新前的确认卡片（顶部非阻塞）：30秒倒计时，不操作则自动刷新，可取消
-  function showReloadConfirm() {
-    if (document.getElementById("zcc-reload-confirm")) return;
-    let remain = 30;
-    let timer = null;
-    const wrap = document.createElement("div");
-    wrap.id = "zcc-reload-confirm";
-    wrap.innerHTML =
-      '<div class="zcc-reload-card">' +
-      '  <div class="zcc-reload-title">🔄 防卡死强制刷新</div>' +
-      '  <div class="zcc-reload-msg">是否立即强制刷新当前页面以释放内存？<br>未保存的操作将被中断。<br><b id="zcc-reload-countdown">30</b> 秒后自动刷新。</div>' +
-      '  <div class="zcc-reload-btns">' +
-      '    <button type="button" class="zcc-reload-btn primary" id="zcc-reload-ok">立即刷新</button>' +
-      '    <button type="button" class="zcc-reload-btn" id="zcc-reload-cancel">取消</button>' +
-      '  </div>' +
-      '</div>';
-    document.body.appendChild(wrap);
-    const cd = wrap.querySelector("#zcc-reload-countdown");
-    const close = function () { if (timer) clearInterval(timer); wrap.remove(); };
-    wrap.querySelector("#zcc-reload-ok").addEventListener("click", function () {
-      close(); doHardReload("手动确认立即刷新");
-    });
-    wrap.querySelector("#zcc-reload-cancel").addEventListener("click", function () {
-      close();
-      try { updateStatus("已取消本次防卡死刷新", "info"); } catch (e) {}
-    });
-    timer = setInterval(function () {
-      remain--;
-      if (cd) cd.textContent = remain;
-      if (remain <= 0) { close(); doHardReload("30秒未操作，自动刷新"); }
-    }, 1000);
+  function clickVirtualConfirm(box) {
+    let btn = box.querySelector(".jd-message-box__btns button.jd-button--primary");
+    if (!btn) {
+      const btns = Array.from(box.querySelectorAll(".jd-message-box__btns button"));
+      btn = btns.find(function (b) { return (b.textContent || "").trim() === "确定"; }) || btns[0];
+    }
+    if (btn) { btn.click(); return true; }
+    return false;
   }
 
-  function setupAntiCrash() {
-    // 全局异常记录，避免未捕获异常打断后续逻辑
-    try {
-      window.addEventListener("error", function (e) { console.warn("[全局error]", e && e.message); });
-      window.addEventListener("unhandledrejection", function (e) { console.warn("[未处理Promise]", e && e.reason); });
-    } catch (e) {}
+  // 点击采购下单后：每2秒查一次弹窗，最多10秒
+  function startVirtualConfirmWatch() {
+    if (__virtualConfirmTimer) clearInterval(__virtualConfirmTimer);
+    const start = Date.now();
+    __virtualConfirmTimer = setInterval(function () {
+      const box = findVirtualMessageBox();
+      if (box) {
+        clearInterval(__virtualConfirmTimer);
+        __virtualConfirmTimer = null;
+        if (clickVirtualConfirm(box)) {
+          assistToast('已自动确认查看虚拟号', 'success');
+          console.log("[自动确认虚拟号] 已点击弹窗“确定”");
+        }
+        return;
+      }
+      if (Date.now() - start >= 10000) {
+        clearInterval(__virtualConfirmTimer);
+        __virtualConfirmTimer = null;
+        assistToast('未发现「确定查看虚拟号吗」弹窗', 'error');
+        console.log("[自动确认虚拟号] 10秒内未发现弹窗，结束任务");
+      }
+    }, 2000);
+  }
 
-    try {
-      chrome.storage.local.get("jd_settings", function (res) {
-        const st = (res && res.jd_settings) || {};
-        if (st.autoReloadAntiCrash === false) { console.log("[防卡死] 已关闭自动刷新"); return; }
-        const pageStart = Date.now();
-        const LIMIT = 120 * 60 * 1000;  // 连续运行 120 分钟
-        const TICK = 10 * 60 * 1000;   // 每 10 分钟检查一次
-        if (__antiCrashTimer) clearInterval(__antiCrashTimer);
-        __antiCrashTimer = setInterval(function () {
-          try {
-            if (Date.now() - pageStart < LIMIT) return;
-            // 正在执行发货/切换店铺/有弹窗时跳过，等下一个检查周期
-            try { if (typeof isAutoShipping !== "undefined" && isAutoShipping) return; } catch (e) {}
-            try { if (typeof isSwitchingShop !== "undefined" && isSwitchingShop) return; } catch (e) {}
-            const dlg = document.getElementById("fo-layer-old");
-            if (dlg && dlg.style && dlg.style.display !== "none") return;
-            if (document.querySelector(".zeromodal-container")) return;
-            console.warn("[防卡死] 连续运行超过2小时，自动硬刷新页面释放内存");
-            doHardReload("连续运行超过2小时");
-          } catch (e) { console.warn("[防卡死] 检查异常", e); }
-        }, TICK);
-        console.log("%c[防卡死] 已启用：连续运行约2小时且空闲时自动刷新页面", "color:#e6a23c;font-weight:bold");
+  function bindAutoConfirmVirtual() {
+    document.addEventListener('click', async function (e) {
+      const btn = e.target.closest && e.target.closest('.j_BuyOrder');
+      if (!btn) return; // 仅采购下单按钮（采购下单1/2/3…，事件委托天然支持多个）
+      const settings = await new Promise(function (r) {
+        chrome.storage.local.get("jd_settings", function (st) { r((st && st.jd_settings) || {}); });
       });
-    } catch (e) {}
+      if (!settings.autoConfirmVirtual) return;
+      if (!(await zccHasToken())) return;
+      assistToast('已开启自动确认查看虚拟号功能', 'info');
+      startVirtualConfirmWatch();
+    }, true);
+    console.log("[自动确认虚拟号] 已启动");
   }
+
 
   function bindOrderTabClick() {
     // 事件委托，标签动态渲染也能生效；捕获阶段确保收到点击
@@ -3226,6 +3434,11 @@
       const tab = e.target.closest && e.target.closest('.jd-tabs__item');
       if (!tab || ORDER_TAB_IDS.indexOf(tab.id) === -1) return;
       // console.log('[标签点击] 订单标签:', tab.id);
+      if (tab.id === 'tab-canceled') {
+        scheduleCanceledAssocCheck(); // 10秒后独立检测已取消关联单
+      } else {
+        removeAssocUI();
+      }
       scheduleTabSync(tab.id);
     }, true);
   }
