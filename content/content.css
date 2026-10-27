@@ -1160,6 +1160,7 @@ button.orange-zcc-report-btn:active {
 
 /* 已取消订单存在未处理关联单 · 顶部告警卡片（非阻塞、需手动关闭） */
 #zcc-assoc-alert { position:fixed; top:16px; left:50%; transform:translateX(-50%); z-index:2147483646; font-family:"Microsoft YaHei",Arial,sans-serif; }
+#zcc-unbought-alert { position:fixed; top:16px; left:50%; transform:translateX(-50%); z-index:2147483646; font-family:"Microsoft YaHei",Arial,sans-serif; }
 .zcc-assoc-card { min-width:320px; max-width:440px; background:#fff; border:1px solid #fbc4c4; border-left:4px solid #f56c6c; border-radius:10px; box-shadow:0 8px 28px rgba(0,0,0,.20); padding:14px 18px; box-sizing:border-box; }
 .zcc-assoc-title { font-size:14px; font-weight:bold; color:#f56c6c; margin-bottom:8px; }
 .zcc-assoc-msg { font-size:12.5px; color:#606266; line-height:1.7; margin-bottom:12px; }

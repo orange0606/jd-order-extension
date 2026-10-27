@@ -566,6 +566,7 @@ async function submitReport(payload) {
 (function () {
   var KEYWORD = "获取售罄商品信息失败";
   var attached = {}; // tabId -> true
+  var __bindDialogOn = false; // 绑定成功提示转通知开关（由 readSettings 更新）
   function isGoods(url) {
     try { var u = new URL(url); return u.hostname === "mobile.yangkeduo.com" && u.pathname.indexOf("/goods") === 0; }
     catch (e) { return false; }
@@ -577,6 +578,7 @@ async function submitReport(payload) {
         var loggedIn = !!(r && r[CONFIG.tokenStorageKey]); // 未登录/账号停用（token被清）时不启用
         var hookOn = loggedIn && st.blockSoldOutDialog !== false;
         var debugOn = hookOn && st.soldoutDebugCompat === true; // 调试器兼容模式默认关（避免黄条）
+        __bindDialogOn = loggedIn && st.autoConfirmBindOrder === true; // 绑定成功提示转通知开关
         cb({ hookOn: hookOn, debugOn: debugOn });
       });
     } catch (e) { cb({ hookOn: false, debugOn: false }); }
@@ -664,17 +666,51 @@ async function submitReport(payload) {
     });
   }
 
+  var BIND_KEYWORD = "绑定采购单成功";
   if (chrome.debugger && chrome.debugger.onEvent) {
     chrome.debugger.onEvent.addListener(function (source, method, params) {
       if (method !== "Page.javascriptDialogOpening") return;
       var tabId = source.tabId;
       var msg = (params && params.message) || "";
       var type = params && params.type;
-      if (type === "beforeunload" || msg.indexOf(KEYWORD) === -1) return; // 非售罄框：保持原生，不干预
-      // 自动点击“确定”，解除阻塞
-      chrome.debugger.sendCommand({ tabId: tabId }, "Page.handleJavaScriptDialog", { accept: true }, function () { void chrome.runtime.lastError; });
-      console.log("[智查查] 已自动关闭售罄弹窗并转通知:", msg);
-      showToastInPage(msg);
+      if (type === "beforeunload") return;
+      var isSold = msg.indexOf(KEYWORD) !== -1;
+      var isBind = msg.indexOf(BIND_KEYWORD) !== -1;
+      if (isBind && !__bindDialogOn) return; // 绑定成功提示：开关关闭时保持原生弹窗
+      if (!isSold && !isBind) return; // 非目标弹窗：不干预
+      if (isSold) {
+        chrome.debugger.sendCommand({ tabId: tabId }, "Page.handleJavaScriptDialog", { accept: true }, function () { void chrome.runtime.lastError; });
+        console.log("[智查查] 已自动关闭售罄弹窗:", msg);
+        showToastInPage(msg);
+      } else if (isBind) {
+        console.log("[智查查] 绑定成功弹窗将在 1 秒后自动确定:", msg);
+        setTimeout(function () {
+          chrome.debugger.sendCommand({ tabId: tabId }, "Page.handleJavaScriptDialog", { accept: true }, function () { void chrome.runtime.lastError; });
+        }, 1000);
+        scheduleBindDetach(tabId);
+      }
+    });
+  }
+
+  // 点完“绑定”后临时 attach debugger，拦截绑定成功 alert；10 秒后自动 detach（售罄兼容模式常开除外）
+  var __bindDetachTimer = {};
+  function scheduleBindDetach(tabId) {
+    clearTimeout(__bindDetachTimer[tabId]);
+    __bindDetachTimer[tabId] = setTimeout(function () {
+      try {
+        chrome.storage.local.get("jd_settings", function (r) {
+          var st = (r && r.jd_settings) || {};
+          var soldDebugOn = st.blockSoldOutDialog !== false && st.soldoutDebugCompat === true;
+          if (!soldDebugOn) detachDebugger(tabId);
+        });
+      } catch (e) {}
+    }, 10000);
+  }
+  if (chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener(function (msg, sender) {
+      if (msg && msg.type === "ZCC_BIND_DIALOG_WATCH" && sender.tab && sender.tab.id != null) {
+        attachDebugger(sender.tab.id);
+      }
     });
   }
 

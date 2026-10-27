@@ -11,7 +11,8 @@
   window.__zccDialogHooked = true;
   document.documentElement.setAttribute('data-zcc-dialog-hooked', '1');
 
-  var KEYWORD = '获取售罄商品信息失败';
+  var SOLD_KEYWORD = '获取售罄商品信息失败';
+  var BIND_KEYWORD = '绑定采购单成功';
   var DIAG = false; // 诊断模式关闭：仅拦截售罄弹窗
   function topIsGoods() {
     try {
@@ -21,13 +22,20 @@
       return false; // 跨源 frame 无法判断顶层，交由 host_permissions 注入策略控制
     }
   }
-  function enabled() {
-    if (DIAG) return true; // 诊断期：所有 frame 都拦截
-    return topIsGoods() && document.documentElement.getAttribute('data-zcc-block-soldout') !== '0';
+  function soldEnabled() {
+    if (DIAG) return true;
+    return topIsGoods() && document.documentElement.getAttribute('data-zcc-block-soldout') === '1';
+  }
+  function bindEnabled() {
+    if (DIAG) return true;
+    return topIsGoods() && document.documentElement.getAttribute('data-zcc-auto-bind-order') === '1';
   }
   function isTarget(msg) {
-    if (DIAG) return true; // 诊断期：匹配所有弹窗内容
-    return msg && String(msg).indexOf(KEYWORD) !== -1;
+    if (!msg) return false;
+    var m = String(msg);
+    if (m.indexOf(SOLD_KEYWORD) !== -1 && soldEnabled()) return true;
+    // 绑定成功提示：不拦截（保留原生弹窗，由 debugger 延迟 1 秒自动确定）
+    return false;
   }
 
   var STYLE_ID = 'zcc-dialog-toast-style';
@@ -78,14 +86,15 @@
       var nativeAlert = obj.alert;
       var nativeConfirm = obj.confirm;
       var ourAlert = function (msg) {
-        if (enabled() && isTarget(msg)) {
+        console.log('[智查查-hook] alert被调用:', msg, '| sold:', soldEnabled(), '| bind:', bindEnabled());
+        if (isTarget(msg)) {
           if (DIAG) { console.warn('[zcc拦截alert]', msg, '| frame:', location.href); console.trace('[zcc alert调用栈]'); }
           showToast(msg); return undefined;
         }
         return nativeAlert.apply(obj, arguments);
       };
       var ourConfirm = function (msg) {
-        if (enabled() && isTarget(msg)) {
+        if (isTarget(msg)) {
           if (DIAG) { console.warn('[zcc拦截confirm]', msg, '| frame:', location.href); console.trace('[zcc confirm调用栈]'); }
           showToast(msg); return true;
         }
@@ -113,7 +122,8 @@
 
   try {
     installOn(window);
-    console.log('[智查查] 售罄弹窗转通知 hook 已生效');
+    // eslint-disable-next-line no-console
+    console.log('[智查查] 弹窗转通知 hook v2 已生效 (alert拦截就绪, typeof alert=' + typeof window.alert + ')');
   } catch (e) {
     console.warn('[智查查] hook 执行失败:', e);
   }
