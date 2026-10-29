@@ -101,7 +101,7 @@
               try { chrome.runtime.sendMessage({ type: 'ZCC_BIND_DIALOG_WATCH' }); } catch (e) {}
             }
           } catch (e) {}
-          setTimeout(function () { __bindBusy = false; }, 1500);
+          setTimeout(function () { __bindBusy = false; }, 3000);
         }, 1000);
         return;
       }
@@ -124,4 +124,52 @@
       startBindWatch();
     } catch (err) {}
   }, true);
+
+  // ---------- 4. 绑定成功后：5秒倒计时自动关闭本页 ----------
+  function showBindSuccessCloseCountdown() {
+    var wrap = document.createElement('div');
+    wrap.id = 'zcc-bind-close-countdown';
+    wrap.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:2147483647;background:#fff;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.25);padding:24px 28px;width:320px;text-align:center;font-family:-apple-system,BlinkMacSystemFont,"Microsoft YaHei",sans-serif;';
+    wrap.innerHTML =
+      '<div style="font-size:16px;font-weight:600;color:#303133;margin-bottom:8px;">✅ 绑定采购单成功</div>' +
+      '<div style="font-size:13px;color:#606266;line-height:1.6;margin-bottom:16px;">本页面将在 <b id="zcc-bind-countdown" style="color:#f56c6c;font-size:18px;">5</b> 秒后自动关闭</div>' +
+      '<div style="display:flex;gap:10px;justify-content:center;">' +
+      '  <button id="zcc-bind-close-cancel" style="padding:7px 18px;border:1px solid #dcdfe6;background:#fff;color:#606266;border-radius:6px;cursor:pointer;font-size:13px;">取消</button>' +
+      '  <button id="zcc-bind-close-now" style="padding:7px 18px;border:none;background:#f56c6c;color:#fff;border-radius:6px;cursor:pointer;font-size:13px;">立即关闭</button>' +
+      '</div>';
+    (document.body || document.documentElement).appendChild(wrap);
+
+    var sec = 5;
+    var numEl = wrap.querySelector('#zcc-bind-countdown');
+    var timer = setInterval(function () {
+      sec--;
+      if (numEl) numEl.textContent = sec;
+      if (sec <= 0) {
+        clearInterval(timer);
+        doCloseTab();
+      }
+    }, 1000);
+
+    function cleanup() { clearInterval(timer); if (wrap.parentNode) wrap.remove(); }
+    wrap.querySelector('#zcc-bind-close-cancel').addEventListener('click', function () { cleanup(); });
+    wrap.querySelector('#zcc-bind-close-now').addEventListener('click', function () { cleanup(); doCloseTab(); });
+
+    function doCloseTab() {
+      cleanup();
+      try {
+        chrome.runtime.sendMessage({ type: 'ZCC_CLOSE_TAB' }, function () {
+          if (chrome.runtime.lastError) { try { window.close(); } catch (e) {} }
+        });
+      } catch (e) { try { window.close(); } catch (e2) {} }
+      // 兜底：1秒后若页面还在，尝试 window.close
+      setTimeout(function () { try { window.close(); } catch (e) {} }, 1000);
+    }
+  }
+
+  // 监听 SW 发来的「绑定成功，开始倒计时关闭」
+  try {
+    chrome.runtime.onMessage.addListener(function (msg) {
+      if (msg && msg.type === 'ZCC_BIND_SUCCESS_CLOSE') showBindSuccessCloseCountdown();
+    });
+  } catch (e) {}
 })();

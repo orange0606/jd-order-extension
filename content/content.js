@@ -713,6 +713,7 @@
           <button class="header-icon-btn jd-only" id="btn-header-sync" title="同步当前页">🔄</button>
           <button class="header-icon-btn jd-only" id="btn-header-ship" title="立即查单发货">🚚</button>
           <button class="header-icon-btn jd-only" id="btn-header-goto-express" title="同步物流（发取件码）">📮</button>
+          <button class="header-icon-btn jd-only" id="btn-header-unbought" title="采购巡检：扫描待出库订单采购情况">🔍</button>
           <button class="header-icon-btn jd-only" id="btn-header-clear" title="清除风险提示">🧹</button>
           <button class="header-icon-btn express-only" id="btn-header-express" title="立即同步物流" style="display:none;">📮</button>
           <button class="scraper-minimize" title="最小化/展开">−</button>
@@ -746,17 +747,6 @@
           <span class="status-dot status-info" id="express-status-dot"></span>
           <span class="status-text" id="express-status-text"></span>
         </div>
-        <div class="scraper-actions jd-only">
-          <button class="scraper-btn scraper-btn-primary" id="btn-scrape">
-            🔄 同步当前页订单
-          </button>
-          <button class="scraper-btn scraper-btn-secondary" id="btn-clear-risk">
-            🧹 清除风险提示
-          </button>
-          <button class="scraper-btn scraper-btn-secondary" id="btn-check-unbought" title="扫描当前页：找出下单48小时内、还没关联采购单的待出库订单">
-            ⏰ 检测48h未采购
-          </button>
-        </div>
         <div class="scraper-actions express-only" id="express-actions" style="display:none;">
           <button class="scraper-btn scraper-btn-primary" id="btn-sync-express">
             📮 立即同步物流状态
@@ -769,7 +759,8 @@
 
     // 同步按钮（标题栏和内容区共用）
     const handleSyncClick = () => handleManualSync();
-    document.getElementById('btn-scrape').addEventListener('click', handleSyncClick);
+    const btnScrape = document.getElementById('btn-scrape');
+    if (btnScrape) btnScrape.addEventListener('click', handleSyncClick);
     document.getElementById('btn-header-sync').addEventListener('click', handleSyncClick);
 
     // 立即查单发货按钮（标题栏）
@@ -801,13 +792,21 @@
       clearRiskMarks();
       updateStatus('已清除页面风险提示', 'info');
     };
-    document.getElementById('btn-clear-risk').addEventListener('click', handleClearClick);
+    const btnClearRisk = document.getElementById('btn-clear-risk');
+    if (btnClearRisk) btnClearRisk.addEventListener('click', handleClearClick);
     document.getElementById('btn-header-clear').addEventListener('click', handleClearClick);
 
     // 手动检测48小时内未采购订单
     const btnCheckUnbought = document.getElementById('btn-check-unbought');
     if (btnCheckUnbought) {
       btnCheckUnbought.addEventListener('click', function () {
+        removeUnboughtUI();
+        runUnboughtCheck();
+      });
+    }
+    const btnHeaderUnbought = document.getElementById('btn-header-unbought');
+    if (btnHeaderUnbought) {
+      btnHeaderUnbought.addEventListener('click', function () {
         removeUnboughtUI();
         runUnboughtCheck();
       });
@@ -1260,33 +1259,46 @@
     return window.location.href.indexOf("tabType=waitOut") !== -1;
   }
 
-  // 解析订单行里的下单时间："2026-10-27 15:18:57 下单，..."
+  // 解析订单行里的下单/付款时间："2026-10-29 16:39:47 下单，2026-10-29 16:39:53 付款"
   function parseOrderTime(card) {
     const box = card.querySelector(".order-time-info");
     if (!box) return null;
-    const m = box.textContent.match(/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s*下单/);
-    if (!m) return null;
-    const t = new Date(m[1].replace(/-/g, "/"));
-    return isNaN(t.getTime()) ? null : t.getTime();
+    const txt = box.textContent;
+    const parseOne = function (str) {
+      const d = new Date(str.replace(/-/g, "/"));
+      return isNaN(d.getTime()) ? null : d.getTime();
+    };
+    const orderM = txt.match(/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s*下单/);
+    const payM = txt.match(/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s*付款/);
+    const orderTime = orderM ? parseOne(orderM[1]) : null;
+    const payTime = payM ? parseOne(payM[1]) : orderTime;
+    if (!orderTime && !payTime) return null;
+    return { orderTime: orderTime, payTime: payTime };
   }
 
-  // 收集当前页：先按下单时间过滤（超过48小时一律不统计），再排除已有采购关联单的订单
-  function collectUnboughtOrders() {
+  // 判断卡片内是否已有拼多多采购关联单横条（横条 .j_buyMsg 在 .j_buyMsg-body 内、属于卡片子节点）
+  function cardHasBuyMsg(card) {
+    return !!card.querySelector('.j_buyMsg.j_buyMsg-flex.j_buyMsg-platform-pdd');
+  }
+
+  // 收集视口内所有待出库订单，带距付款小时数和是否已采购
+  function collectRecentOrders() {
     const now = Date.now();
-    const threshold = now - UNBOUGHT_HOURS * 3600 * 1000;
     const out = [];
     const cards = document.querySelectorAll("[data-orange-jbs-order-id]");
+    const vh = window.innerHeight || document.documentElement.clientHeight;
     cards.forEach(function (card) {
       const r = card.getBoundingClientRect();
       if (r.height <= 0 && card.offsetParent === null) return;
+      // 只收集当前视口内的卡片，随滚动逐屏发现
+      if (r.bottom < 80 || r.top > vh - 80) return;
       const oid = card.getAttribute("data-orange-jbs-order-id");
       if (!oid) return;
-      // 第一步：解析下单时间，解析失败或超过48小时直接跳过（不统计）
-      const t = parseOrderTime(card);
-      if (!t || t < threshold) return;
-      // 第二步：已有拼多多采购关联单横条则跳过
-      if (document.querySelector('.j_buyMsg.j_buyMsg-flex.j_buyMsg-platform-pdd[data-orderid="' + oid + '"]')) return;
-      out.push({ oid: oid, card: card, time: t });
+      const times = parseOrderTime(card);
+      if (!times) return;
+      const refTime = times.payTime || times.orderTime;
+      const hours = (now - refTime) / 3600000;
+      out.push({ oid: oid, card: card, hours: hours, bought: cardHasBuyMsg(card), payTime: refTime });
     });
     return out;
   }
@@ -1304,7 +1316,35 @@
     let el = document.getElementById("zcc-unbought-alert");
     if (!el) { el = document.createElement("div"); el.id = "zcc-unbought-alert"; document.body.appendChild(el); }
     el.innerHTML = '<div class="zcc-assoc-card ' + (cls || "") + '">' + inner + '</div>';
+    makeUnboughtDraggable(el);
     return el;
+  }
+
+  // 让未采购检测弹窗可拖动：按住卡片空白处拖动
+  function makeUnboughtDraggable(el) {
+    if (el.__zccDragBound) return;
+    el.__zccDragBound = true;
+    let startX = 0, startY = 0, startLeft = 0, startTop = 0, dragging = false;
+    el.addEventListener("mousedown", function (e) {
+      // 点在按钮/链接/输入框/列表/折叠内容上不触发拖动
+      if (e.target.closest("button, a, input, textarea, .zcc-ub-list, .zcc-ub-fold-body")) return;
+      const card = el.querySelector(".zcc-assoc-card");
+      if (card) card.style.cursor = "move";
+      dragging = true;
+      const rect = el.getBoundingClientRect();
+      el.style.left = rect.left + "px";
+      el.style.top = rect.top + "px";
+      el.style.transform = "none";
+      startX = e.clientX; startY = e.clientY;
+      startLeft = rect.left; startTop = rect.top;
+      e.preventDefault();
+    });
+    document.addEventListener("mousemove", function (e) {
+      if (!dragging) return;
+      el.style.left = (startLeft + e.clientX - startX) + "px";
+      el.style.top = (startTop + e.clientY - startY) + "px";
+    });
+    document.addEventListener("mouseup", function () { dragging = false; });
   }
 
   function renderUnboughtJumpBtn(list) {
@@ -1328,23 +1368,42 @@
     window.__zccGotoNextUnbought = function () { btn.click(); };
   }
 
+  let __unboughtRunning = false;
   async function runUnboughtCheck() {
-    if (!(await zccHasToken())) { console.log("[未采购检测] 未登录，跳过"); return; }
+    if (__unboughtRunning) { console.log("[采购巡检] 正在执行中，忽略重复触发"); return; }
+    __unboughtRunning = true;
+    try {
+    if (!(await zccHasToken())) {
+      setUnboughtCard(
+        '<div class="zcc-assoc-title">⚠️ 请先登录</div>' +
+        '<div class="zcc-assoc-msg">采购巡检需要先登录智查查账号，请登录后再使用。</div>' +
+        '<div class="zcc-assoc-btns"><button type="button" class="zcc-assoc-btn primary" id="zcc-unbought-close">知道了</button></div>', "");
+      const el = document.getElementById("zcc-unbought-alert");
+      if (el) el.querySelector("#zcc-unbought-close").addEventListener("click", function () { el.remove(); });
+      return;
+    }
     if (!isWaitOutTab()) return;
+    removeUnboughtUI(); // 每次检测前先清掉上一次结果，不保留数量
 
-    const map = new Map(); // oid -> {oid,card,time}
+    const map = new Map(); // oid -> {oid,card,hours,bought}
     const gather = function () {
-      collectUnboughtOrders().forEach(function (item) {
+      collectRecentOrders().forEach(function (item) {
         if (!map.has(item.oid)) {
           map.set(item.oid, item);
-          console.log("[未采购检测] 新发现待采购订单 " + item.oid + "，下单于 " + new Date(item.time).toLocaleString());
+          console.log("[未采购检测] 发现订单 " + item.oid + "，已付款 " + item.hours.toFixed(1) + " 小时，" + (item.bought ? "已采购" : "未采购"));
+        } else if (item.bought && !map.get(item.oid).bought) {
+          map.get(item.oid).bought = true; // 横条刚渲染，更新状态
         }
       });
     };
 
     const se = document.scrollingElement || document.documentElement;
-    const startWinY = window.scrollY || se.scrollTop || 0;
     let container = findAssocScrollContainer();
+    // 检测前先滚到最顶部，避免从中间开始漏扫上面的订单
+    window.scrollTo(0, 0);
+    if (container) container.scrollTop = 0;
+    await zccSleep(700);
+    const startWinY = window.scrollY || se.scrollTop || 0;
     const startCtnY = container ? container.scrollTop : 0;
 
     const MAX_STEPS = 30, STEP_MS = 800;
@@ -1367,9 +1426,12 @@
       await zccSleep(STEP_MS);
       if (!isWaitOutTab()) return;
       gather();
+      let boughtN = 0;
+      map.forEach(function (it) { if (it.bought) boughtN++; });
+      const unboughtN = map.size - boughtN;
       setUnboughtCard(
-        '<div class="zcc-assoc-title is-checking">🔍 正在检测48小时内未采购订单...（第 <b>' + step + '</b> 屏）</div>' +
-        '<div class="zcc-assoc-msg">已发现 <b>' + map.size + '</b> 个待采购订单，继续向下滚动加载...</div>',
+        '<div class="zcc-assoc-title is-checking">🔍 正在扫描待出库订单...（第 <b>' + step + '</b> 屏）</div>' +
+        '<div class="zcc-assoc-msg">已发现 <b>' + map.size + '</b> 个订单（未采购 <b style="color:#f56c6c">' + unboughtN + '</b>，已采购 <b style="color:#67c23a">' + boughtN + '</b>），继续向下滚动加载...</div>',
         "is-checking");
       const winAfter = window.scrollY || se.scrollTop || 0;
       const ctnAfter = container ? container.scrollTop : 0;
@@ -1380,49 +1442,122 @@
       if (!moved && !grew) { noMove++; if (noMove >= 3) break; } else { noMove = 0; }
     }
 
-    // 复检：横条懒加载，滚动时可能没渲染；停在底部再查一遍，剔除已有采购关联单的
-    await zccSleep(400);
-    let dropped = 0;
-    map.forEach(function (item, oid) {
-      if (document.querySelector('.j_buyMsg.j_buyMsg-flex.j_buyMsg-platform-pdd[data-orderid="' + oid + '"]')) {
-        map.delete(oid);
-        dropped++;
-      }
-    });
-    if (dropped) console.log("[未采购检测] 复检剔除 " + dropped + " 个已有采购关联单的订单");
+    // 复检：横条是懒加载的，收集时可能还没渲染；逐个滚到视口等 600ms 让横条插入，更新 bought 状态
+    await zccSleep(500);
+    let rechecked = 0;
+    const recheckList = Array.from(map.values());
+    for (let i = 0; i < recheckList.length; i++) {
+      if (!isWaitOutTab()) return;
+      const item = recheckList[i];
+      const card = document.querySelector('[data-orange-jbs-order-id="' + item.oid + '"]') || item.card;
+      if (!card) continue;
+      card.scrollIntoView({ block: "center" });
+      await zccSleep(600);
+      if (!isWaitOutTab()) return;
+      const b = cardHasBuyMsg(card);
+      if (b && !item.bought) { item.bought = true; rechecked++; }
+    }
+    if (rechecked) console.log("[未采购检测] 复检确认 " + rechecked + " 个订单已有采购关联单");
 
     window.scrollTo(0, startWinY);
     if (container) container.scrollTop = startCtnY;
     await zccSleep(300);
     if (!isWaitOutTab()) return;
 
-    const list = Array.from(map.values());
-    if (list.length) {
-      renderUnboughtJumpBtn(list);
-      const el = setUnboughtCard(
-        '<div class="zcc-assoc-title">⏰ 检查完成：发现 ' + list.length + ' 个48小时内未采购订单</div>' +
-        '<div class="zcc-assoc-msg">这些订单下单不足48小时、但还没有关联采购单。<br>请及时到拼多多采购发货，避免晚发赔。</div>' +
-        '<div class="zcc-assoc-btns">' +
-        '  <button type="button" class="zcc-assoc-btn" id="zcc-unbought-redetect">🔄 重新检测</button>' +
-        '  <button type="button" class="zcc-assoc-btn primary" id="zcc-unbought-locate">立即定位</button>' +
-        '  <button type="button" class="zcc-assoc-btn" id="zcc-unbought-close">我知道了</button>' +
-        '</div>', "");
-      el.querySelector("#zcc-unbought-redetect").addEventListener("click", rerunUnboughtCheck);
-      el.querySelector("#zcc-unbought-locate").addEventListener("click", function () { if (typeof window.__zccGotoNextUnbought === "function") window.__zccGotoNextUnbought(); });
-      el.querySelector("#zcc-unbought-close").addEventListener("click", function () { el.remove(); });
-      console.log("[未采购检测] 本页发现 " + list.length + " 个48小时内未采购订单");
-    } else {
-      const el = setUnboughtCard(
-        '<div class="zcc-assoc-title is-ok">✅ 检查完成</div>' +
-        '<div class="zcc-assoc-msg">48小时内的待出库订单均已关联采购单，无需补采购。</div>' +
-        '<div class="zcc-assoc-btns">' +
-        '  <button type="button" class="zcc-assoc-btn primary" id="zcc-unbought-redetect">🔄 重新检测</button>' +
-        '  <button type="button" class="zcc-assoc-btn" id="zcc-unbought-close">我知道了</button>' +
-        '</div>', "is-ok");
-      el.querySelector("#zcc-unbought-redetect").addEventListener("click", rerunUnboughtCheck);
-      el.querySelector("#zcc-unbought-close").addEventListener("click", function () { el.remove(); });
-      console.log("[未采购检测] 本页无48小时内未采购订单");
+    // 分组排序：超时未采购(48-120h) → 预警未采购(24-48h) → 24h内未采购 → 已采购>24h
+    function groupRank(x) {
+      if (!x.bought && x.hours > 48 && x.hours <= 120) return 0; // 超时（紧急）
+      if (!x.bought && x.hours > 24 && x.hours <= 48) return 1; // 预警
+      if (!x.bought && x.hours <= 24) return 2;                   // 24h内未采购
+      if (x.bought && x.hours > 24) return 3;                     // 已采购>24h
+      if (x.bought && x.hours <= 24) return 4;                    // 已采购<=24h（折叠）
+      if (!x.bought && x.hours > 120) return 5;                  // 超久未采购>120h（无货不发，折叠，最不紧急）
+      return 6;
     }
+    const list = Array.from(map.values()).sort(function (a, b) {
+      const ga = groupRank(a), gb = groupRank(b);
+      if (ga !== gb) return ga - gb;
+      return (b.payTime || 0) - (a.payTime || 0); // 同组内最新下单在前
+    });
+    const total = list.length;
+    const boughtCount = list.filter(function (x) { return x.bought; }).length;
+    const unboughtCount = total - boughtCount;
+    const warnCount = list.filter(function (x) { return !x.bought && x.hours > 24 && x.hours <= 48; }).length;
+    const overdueCount = list.filter(function (x) { return !x.bought && x.hours > 48; }).length;
+
+    // 供状态栏定位按钮使用：只定位未采购订单
+    const unboughtList = list.filter(function (x) { return !x.bought; });
+    renderUnboughtJumpBtn(unboughtList);
+
+    function hoursColor(h) { return h > 48 ? "red" : (h > 24 ? "yellow" : "green"); }
+
+    function rowHtml(item) {
+      const c = hoursColor(item.hours);
+      const statusText = item.bought ? "已采购" : "未采购";
+      const statusCls = item.bought ? "zcc-ub-st-bought" : "zcc-ub-st-unbought";
+      return '<div class="zcc-ub-row">' +
+        '  <span class="zcc-ub-dot zcc-ub-dot-' + c + '"></span>' +
+        '  <a href="javascript:;" class="zcc-ub-oid" data-oid="' + item.oid + '">' + item.oid + '</a>' +
+        '  <span class="zcc-ub-hours">已付款 ' + item.hours.toFixed(1) + ' 小时</span>' +
+        '  <span class="zcc-ub-st ' + statusCls + '">' + statusText + '</span>' +
+        '</div>';
+    }
+
+    let rowsHtml = "";
+    // 非折叠分组（0-3）直接显示
+    list.forEach(function (item) { if (groupRank(item) <= 3) rowsHtml += rowHtml(item); });
+    // rank 4：已采购<=24h 折叠
+    const foldedBought = list.filter(function (x) { return groupRank(x) === 4; });
+    if (foldedBought.length) {
+      let h = "";
+      foldedBought.forEach(function (item) { h += rowHtml(item); });
+      rowsHtml += '<div class="zcc-ub-fold-toggle zcc-ub-fold-warn" id="zcc-ub-fold-bought">📦 已采购24h内订单（' + foldedBought.length + '），点击展开</div>';
+      rowsHtml += '<div class="zcc-ub-fold-body" id="zcc-ub-fold-bought-body" style="display:none;">' + h + '</div>';
+    }
+    // rank 5：超久未采购>120h（无货不发）折叠，放最后
+    const foldedOld = list.filter(function (x) { return groupRank(x) === 5; });
+    if (foldedOld.length) {
+      let h2 = "";
+      foldedOld.forEach(function (item) { h2 += rowHtml(item); });
+      rowsHtml += '<div class="zcc-ub-fold-toggle zcc-ub-fold-old" id="zcc-ub-fold-old">🗄️ 超久未采购订单（>120h，多为无货不发，' + foldedOld.length + '），点击展开</div>';
+      rowsHtml += '<div class="zcc-ub-fold-body" id="zcc-ub-fold-old-body" style="display:none;">' + h2 + '</div>';
+    }
+
+    const el = setUnboughtCard(
+      '<div class="zcc-assoc-title">⏰ 待出库订单采购情况一览</div>' +
+      '<div class="zcc-ub-summary">' +
+      '  <span>总计 <b>' + total + '</b></span>' +
+      '  <span>已采购 <b style="color:#67c23a">' + boughtCount + '</b></span>' +
+      '  <span>未采购 <b style="color:#f56c6c">' + unboughtCount + '</b></span>' +
+      '  <span>发货预警(<b style="color:#e6a23c">&gt;24h</b>) <b>' + warnCount + '</b></span>' +
+      '  <span>超时(<b style="color:#f56c6c">&gt;48h</b>) <b>' + overdueCount + '</b></span>' +
+      '</div>' +
+      '<div class="zcc-ub-list">' + rowsHtml + '</div>' +
+      '<div class="zcc-assoc-btns">' +
+      '  <button type="button" class="zcc-assoc-btn" id="zcc-unbought-redetect">🔄 重新检测</button>' +
+      '  <button type="button" class="zcc-assoc-btn" id="zcc-unbought-close">关闭</button>' +
+      '</div>', "");
+
+    // 点击订单号定位
+    el.querySelectorAll(".zcc-ub-oid").forEach(function (aEl) {
+      aEl.addEventListener("click", function () {
+        const oid = aEl.getAttribute("data-oid");
+        const card = document.querySelector('[data-orange-jbs-order-id="' + oid + '"]');
+        if (card && typeof scrollToAssoc === "function") scrollToAssoc(card);
+      });
+    });
+    // 折叠/展开：所有折叠按钮通用
+    el.querySelectorAll(".zcc-ub-fold-toggle").forEach(function (fb) {
+      fb.addEventListener("click", function () {
+        const targetId = fb.id + "-body";
+        const body = el.querySelector("#" + targetId);
+        if (body) body.style.display = body.style.display === "none" ? "block" : "none";
+      });
+    });
+    el.querySelector("#zcc-unbought-redetect").addEventListener("click", rerunUnboughtCheck);
+    el.querySelector("#zcc-unbought-close").addEventListener("click", function () { el.remove(); });
+    console.log("[未采购检测] 总计 " + total + "，已采购 " + boughtCount + "，未采购 " + unboughtCount + "，预警 " + warnCount + "，超时 " + overdueCount);
+    } finally { __unboughtRunning = false; }
   }
 
   function rerunUnboughtCheck() {

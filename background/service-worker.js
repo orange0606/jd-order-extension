@@ -685,7 +685,13 @@ async function submitReport(payload) {
       } else if (isBind) {
         console.log("[智查查] 绑定成功弹窗将在 1 秒后自动确定:", msg);
         setTimeout(function () {
-          chrome.debugger.sendCommand({ tabId: tabId }, "Page.handleJavaScriptDialog", { accept: true }, function () { void chrome.runtime.lastError; });
+          chrome.debugger.sendCommand({ tabId: tabId }, "Page.handleJavaScriptDialog", { accept: true }, function () {
+            void chrome.runtime.lastError;
+            // alert 关闭后立即通知页面显示倒计时自动关闭窗口
+            setTimeout(function () {
+              try { chrome.tabs.sendMessage(tabId, { type: 'ZCC_BIND_SUCCESS_CLOSE' }); } catch (e) {}
+            }, 300);
+          });
         }, 1000);
         scheduleBindDetach(tabId);
       }
@@ -710,6 +716,11 @@ async function submitReport(payload) {
     chrome.runtime.onMessage.addListener(function (msg, sender) {
       if (msg && msg.type === "ZCC_BIND_DIALOG_WATCH" && sender.tab && sender.tab.id != null) {
         attachDebugger(sender.tab.id);
+      }
+      if (msg && msg.type === "ZCC_CLOSE_TAB" && sender.tab && sender.tab.id != null) {
+        // 先 detach debugger 再关 tab
+        try { detachDebugger(sender.tab.id); } catch (e) {}
+        chrome.tabs.remove(sender.tab.id, function () { void chrome.runtime.lastError; });
       }
     });
   }
