@@ -330,10 +330,10 @@
       return;
     }
 
-    // 建立订单号 -> 风险栏的映射
+    // 建立订单号 -> 风险栏的映射（统一转字符串+trim，防止数字/字符串/空格错配）
     const riskMap = new Map();
     riskBars.forEach(bar => {
-      const orderId = bar.getAttribute('data-id');
+      const orderId = String(bar.getAttribute('data-id') || '').trim();
       if (orderId) {
         riskMap.set(orderId, bar);
       }
@@ -342,8 +342,9 @@
     // 遍历订单，补充风险数据
     let matchedCount = 0;
     orders.forEach(order => {
-      const bar = riskMap.get(order.orderId);
-      if (!bar) return;
+      const orderIdKey = String(order.orderId || '').trim();
+      const bar = riskMap.get(orderIdKey);
+      if (!bar) return; // 订单号不一致，保留订单卡片里的原地址，不用风险栏数据
 
       try {
         order.hasRiskData = true;
@@ -352,10 +353,11 @@
         // 1. 真实完整地址：a[data-type="a"] 的 data-content
         const addressLink = bar.querySelector('a[data-type="a"]');
         if (addressLink) {
-          order.riskFullAddress = addressLink.getAttribute('data-content') || '';
-          // 用真实地址替换原来脱敏的地址
-          if (order.riskFullAddress) {
-            order.address = order.riskFullAddress;
+          const fullAddr = addressLink.getAttribute('data-content') || '';
+          // 只有真实完整地址（非空、不含掩码星号）才替换
+          if (fullAddr && fullAddr.indexOf('*') === -1) {
+            order.riskFullAddress = fullAddr;
+            order.address = fullAddr;
           }
           // 提取风险距离
           const addressText = addressLink.textContent || '';
@@ -642,7 +644,13 @@
       }
 
       // 4. 匹配智查查风险栏数据（真实地址、完整手机号、风险等级）
+      // 风险栏可能异步渲染，最多等3秒让它出现再匹配
       updateStatus('正在匹配智查查风险数据...', 'info');
+      for (let waitRound = 0; waitRound < 6; waitRound++) {
+        const bars = document.querySelectorAll('.zgcc-result-bar-row');
+        if (bars.length > 0) break;
+        await new Promise(r => setTimeout(r, 500));
+      }
       enrichOrdersWithRiskData(orders);
 
       // 5. 转换为后端接口格式

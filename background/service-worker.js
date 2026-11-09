@@ -617,6 +617,14 @@ async function submitReport(payload) {
         if (chrome.runtime.lastError) { return; }
         attached[tabId] = true;
         chrome.debugger.sendCommand({ tabId: tabId }, "Page.enable", function () { void chrome.runtime.lastError; });
+        // 告诉主世界 hook：debugger 已激活，绑定 alert 放行给原生由 debugger 接管
+        try {
+          chrome.scripting.executeScript({
+            target: { tabId: tabId },
+            args: [true],
+            func: function (v) { try { window.__zccDebuggerActive = v; } catch (e) {} }
+          }).catch(function () {});
+        } catch (e) {}
       });
     } catch (e) {}
   }
@@ -624,6 +632,14 @@ async function submitReport(payload) {
     if (!chrome.debugger || !attached[tabId]) return;
     try { chrome.debugger.detach({ tabId: tabId }, function () { void chrome.runtime.lastError; }); } catch (e) {}
     delete attached[tabId];
+    // 清除页面标记
+    try {
+      chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        args: [false],
+        func: function (v) { try { window.__zccDebuggerActive = v; } catch (e) {} }
+      }).catch(function () {});
+    } catch (e) {}
   }
 
   // 页面内显示非阻塞 toast（自包含，注入到顶层 frame）
@@ -666,6 +682,9 @@ async function submitReport(payload) {
     });
   }
 
+  // 记录每个 tab 的绑定是否为极速版（1秒关页）
+  var __bindFastMap = {};
+
   var BIND_KEYWORD = "绑定采购单成功";
   if (chrome.debugger && chrome.debugger.onEvent) {
     chrome.debugger.onEvent.addListener(function (source, method, params) {
@@ -688,8 +707,10 @@ async function submitReport(payload) {
           chrome.debugger.sendCommand({ tabId: tabId }, "Page.handleJavaScriptDialog", { accept: true }, function () {
             void chrome.runtime.lastError;
             // alert 关闭后立即通知页面显示倒计时自动关闭窗口
+            var fast = !!__bindFastMap[tabId];
             setTimeout(function () {
-              try { chrome.tabs.sendMessage(tabId, { type: 'ZCC_BIND_SUCCESS_CLOSE' }); } catch (e) {}
+              try { chrome.tabs.sendMessage(tabId, { type: 'ZCC_BIND_SUCCESS_CLOSE', fast: fast }); } catch (e) {}
+              delete __bindFastMap[tabId];
             }, 300);
           });
         }, 1000);
@@ -715,6 +736,7 @@ async function submitReport(payload) {
   if (chrome.runtime && chrome.runtime.onMessage) {
     chrome.runtime.onMessage.addListener(function (msg, sender) {
       if (msg && msg.type === "ZCC_BIND_DIALOG_WATCH" && sender.tab && sender.tab.id != null) {
+        if (msg.fast) __bindFastMap[sender.tab.id] = true;
         attachDebugger(sender.tab.id);
       }
       if (msg && msg.type === "ZCC_CLOSE_TAB" && sender.tab && sender.tab.id != null) {

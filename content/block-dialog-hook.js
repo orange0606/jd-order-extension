@@ -38,6 +38,11 @@
     return false;
   }
 
+  // 判断是否为绑定成功 alert
+  function isBindAlert(msg) {
+    return msg && String(msg).indexOf(BIND_KEYWORD) !== -1 && bindEnabled();
+  }
+
   var STYLE_ID = 'zcc-dialog-toast-style';
   var CONTAINER_ID = 'zcc-dialog-toast-wrap';
   function injectStyle() {
@@ -87,6 +92,12 @@
       var nativeConfirm = obj.confirm;
       var ourAlert = function (msg) {
         console.log('[智查查-hook] alert被调用:', msg, '| sold:', soldEnabled(), '| bind:', bindEnabled());
+        // 绑定成功 alert：无 debugger 时直接吞掉，通知隔离世界走倒计时关页
+        if (isBindAlert(msg) && !window.__zccDebuggerActive) {
+          showToast(msg);
+          try { window.postMessage({ type: 'ZCC_BIND_ALERT_CLOSED', fast: !!window.__zccFastBind }, '*'); } catch (e) {}
+          return undefined;
+        }
         if (isTarget(msg)) {
           if (DIAG) { console.warn('[zcc拦截alert]', msg, '| frame:', location.href); console.trace('[zcc alert调用栈]'); }
           showToast(msg); return undefined;
