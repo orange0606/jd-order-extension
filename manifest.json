@@ -1,7 +1,7 @@
 ﻿{
   "manifest_version": 3,
   "name": "京东订单数据抓取助手",
-  "version": "1.0.16",
+  "version": "1.0.18",
   "description": "自动检测京东商家后台订单页面，抓取订单数据并同步到智查查风控系统",
   "permissions": [
     "storage",
@@ -11,12 +11,14 @@
     "tabs",
     "clipboardRead",
     "webNavigation",
-    "debugger"
+    "debugger",
+    "declarativeNetRequest"
   ],
   "host_permissions": [
     "https://shop.jd.com/*",
     "https://*.jd.com/*",
     "https://pay.jingbashi.com/*",
+    "https://zzc.jingbashi.com/*",
     "http://localhost:3000/*",
     "http://127.0.0.1:3000/*",
     "https://mobile.yangkeduo.com/*"
@@ -56,6 +58,26 @@
     },
     {
       "matches": [
+        "https://shop.jd.com/jdm/trade/after-sale/independent-after-sale/list*"
+      ],
+      "js": [
+        "content/after-sale-bind.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "https://shop.jd.com/jdm/trade/orders/order-list*"
+      ],
+      "js": [
+        "content/order-pdd-win.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": [
         "https://mobile.yangkeduo.com/*"
       ],
       "js": [
@@ -76,6 +98,36 @@
       "run_at": "document_start",
       "all_frames": true,
       "match_origin_as_fallback": true
+    },
+    {
+      "matches": [
+        "https://mobile.yangkeduo.com/*"
+      ],
+      "js": [
+        "content/pdd-embed.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "https://zzc.jingbashi.com/returns*"
+      ],
+      "js": [
+        "content/returns-quick-fill.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "https://zzc.jingbashi.com/*"
+      ],
+      "js": [
+        "content/zzc-proxy.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
     }
   ],
   "action": {

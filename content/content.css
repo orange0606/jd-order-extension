@@ -1159,7 +1159,7 @@ button.orange-zcc-report-btn:active {
 
 /* 已取消订单存在未处理关联单 · 顶部告警卡片（非阻塞、需手动关闭） */
 #zcc-assoc-alert { position:fixed; top:16px; left:50%; transform:translateX(-50%); z-index:2147483646; font-family:"Microsoft YaHei",Arial,sans-serif; }
-#zcc-unbought-alert { position:fixed; top:16px; left:50%; transform:translateX(-50%); z-index:2147483646; font-family:"Microsoft YaHei",Arial,sans-serif; }
+#zcc-unbought-alert { position:fixed; top:56px; left:14px; z-index:2147483646; font-family:"Microsoft YaHei",Arial,sans-serif; }
 .zcc-assoc-card { min-width:320px; max-width:440px; background:#fff; border:1px solid #fbc4c4; border-left:4px solid #f56c6c; border-radius:10px; box-shadow:0 8px 28px rgba(0,0,0,.20); padding:14px 18px; box-sizing:border-box; }
 .zcc-assoc-title { font-size:14px; font-weight:bold; color:#f56c6c; margin-bottom:8px; }
 .zcc-assoc-msg { font-size:12.5px; color:#606266; line-height:1.7; margin-bottom:12px; }
@@ -1174,6 +1174,18 @@ button.orange-zcc-report-btn:active {
 .zcc-assoc-card.is-ok { border-color:#b3e19d; border-left-color:#67c23a; }
 .zcc-assoc-title.is-checking { color:#409eff; }
 .zcc-assoc-title.is-ok { color:#67c23a; }
+
+/* 已取消tab · 左上角折叠面板：检测结果 + 操作 + 最近检测记录 */
+#zcc-assoc-panel { position:fixed; top:56px; left:14px; width:360px; max-width:90vw; z-index:2147483646; font-family:"Microsoft YaHei",Arial,sans-serif; }
+#zcc-assoc-panel .zcc-ap-header { display:flex; align-items:center; gap:8px; padding:8px 12px; background:#fef0f0; border:1px solid #fbc4c4; border-radius:10px; cursor:pointer; user-select:none; font-size:13px; font-weight:bold; color:#f56c6c; box-shadow:0 6px 20px rgba(0,0,0,.15); }
+#zcc-assoc-panel .zcc-ap-toggle { margin-left:auto; font-weight:normal; color:#909399; font-size:12px; }
+#zcc-assoc-panel .zcc-ap-body { margin-top:6px; }
+#zcc-assoc-panel .zcc-ap-body .zcc-assoc-card { min-width:0; max-width:none; width:100%; box-shadow:0 6px 20px rgba(0,0,0,.15); }
+#zcc-assoc-panel .zcc-ap-log { margin-top:6px; background:#fff; border:1px solid #ebeef5; border-radius:8px; padding:6px 10px; font-size:11.5px; color:#909399; max-height:110px; overflow:auto; line-height:1.8; box-shadow:0 4px 14px rgba(0,0,0,.08); }
+/* 结果列表行：订单号文字与定位按钮小号紧凑 */
+#zcc-assoc-panel .zcc-assoc-order-row { font-size:12px; padding:2px 0 !important; }
+#zcc-assoc-panel .zcc-assoc-order-row b { font-size:12px; }
+#zcc-assoc-panel .zcc-assoc-locate-one { padding:2px 10px; font-size:12px; line-height:1.4; border-radius:4px; }
 
 /* 未采购检测结果面板：加宽 + 列表 */
 #zcc-unbought-alert .zcc-assoc-card { min-width:580px; max-width:700px; }

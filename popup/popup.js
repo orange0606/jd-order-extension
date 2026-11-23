@@ -287,6 +287,7 @@ async function loadSettings() {
     document.getElementById('setting-assist-associate').checked = settings.assistAssociate === true;
     document.getElementById('setting-auto-confirm-virtual').checked = settings.autoConfirmVirtual === true;
     document.getElementById('setting-auto-confirm-bind-order').checked = settings.autoConfirmBindOrder === true;
+    document.getElementById('setting-after-sale-bind').checked = settings.afterSaleBindShow !== false; // 默认开启
     document.getElementById('setting-canceled-assoc').checked = settings.canceledAssocCheck !== false;
     document.getElementById('sync-express-interval-row').style.display = settings.autoSyncExpress ? 'flex' : 'none';
 
@@ -335,7 +336,8 @@ async function saveSettings() {
     assistAssociate: document.getElementById('setting-assist-associate').checked,
     canceledAssocCheck: document.getElementById('setting-canceled-assoc').checked,
     autoConfirmVirtual: document.getElementById('setting-auto-confirm-virtual').checked,
-    autoConfirmBindOrder: document.getElementById('setting-auto-confirm-bind-order').checked
+    autoConfirmBindOrder: document.getElementById('setting-auto-confirm-bind-order').checked,
+    afterSaleBindShow: document.getElementById('setting-after-sale-bind').checked
   };
   // 先读取现有设置合并（保留 shopId/lastShipTime 等字段），直接写入 storage
   // 直接写入 storage 比发消息给 service-worker 更可靠（避免 SW 休眠导致延迟）
