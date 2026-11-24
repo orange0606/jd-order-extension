@@ -123,77 +123,7 @@
 
         <div class="settings-group-title">京巴士自动化设置</div>
 
-        <div class="setting-item">
-          <div class="setting-info">
-            <div class="setting-name">定时查单发货</div>
-            <div class="setting-desc">自动点击"批量查单发货"并执行；开启后展开：执行间隔、自动切换店铺、执行时段</div>
-          </div>
-          <label class="switch">
-            <input type="checkbox" id="setting-auto-ship">
-            <span class="slider"></span>
-          </label>
-        </div>
-
-        <div class="setting-item" id="auto-ship-interval-row" style="display:none;">
-          <div class="setting-info">
-            <div class="setting-name">执行间隔（分钟）</div>
-            <div class="setting-desc">每隔多少分钟自动执行一次查单发货；开启切换店铺后表示跑完一轮店铺后的等待间隔</div>
-          </div>
-          <input type="number" id="setting-auto-ship-interval" min="1" max="720" value="30" style="width:70px;padding:6px 8px;border:1px solid #dcdfe6;border-radius:4px;text-align:center;font-size:14px;">
-        </div>
-
-        <div class="setting-item" id="auto-switch-shop-row" style="display:none;">
-          <div class="setting-info">
-            <div class="setting-name">自动切换店铺</div>
-            <div class="setting-desc">开启后按绑定店铺逐一轮换：切换前30秒提示（可取消），每店发货最长2分钟，跑完一轮再按间隔等待</div>
-          </div>
-          <label class="switch">
-            <input type="checkbox" id="setting-auto-switch-shop">
-            <span class="slider"></span>
-          </label>
-        </div>
-
-        <div class="setting-item">
-          <div class="setting-info">
-            <div class="setting-name">自动同步物流状态</div>
-            <div class="setting-desc">京巴士订单状态页自动点击"同步物流状态(并发送取件码)"，共用下方时段</div>
-          </div>
-          <label class="switch">
-            <input type="checkbox" id="setting-auto-sync-express">
-            <span class="slider"></span>
-          </label>
-        </div>
-
-        <div class="setting-item" id="sync-express-interval-row" style="display:none;">
-          <div class="setting-info">
-            <div class="setting-name">执行间隔（分钟）</div>
-            <div class="setting-desc">每隔多少分钟自动同步一次物流状态</div>
-          </div>
-          <input type="number" id="setting-sync-express-interval" min="1" max="1440" value="120" style="width:70px;padding:6px 8px;border:1px solid #dcdfe6;border-radius:4px;text-align:center;font-size:14px;">
-        </div>
-
-        <div class="setting-item" id="auto-ship-timerange-row" style="display:none;">
-          <div class="setting-info">
-            <div class="setting-name">限制执行时间段</div>
-            <div class="setting-desc" id="auto-ship-timerange-desc">勾选后仅在指定时间段内自动执行</div>
-          </div>
-          <label class="switch">
-            <input type="checkbox" id="setting-auto-ship-timerange">
-            <span class="slider"></span>
-          </label>
-        </div>
-
-        <div class="setting-item" id="auto-ship-timepick-row" style="display:none;">
-          <div class="setting-info">
-            <div class="setting-name">执行时段</div>
-            <div class="setting-desc">仅在该时段内执行自动发货、同步物流</div>
-          </div>
-          <div style="display:flex;align-items:center;gap:6px;">
-            <input type="time" id="setting-ship-time-start" value="07:00" style="padding:5px 6px;border:1px solid #dcdfe6;border-radius:4px;font-size:13px;">
-            <span style="color:#909399;font-size:13px;">~</span>
-            <input type="time" id="setting-ship-time-end" value="22:00" style="padding:5px 6px;border:1px solid #dcdfe6;border-radius:4px;font-size:13px;">
-          </div>
-        </div>
+        <!-- 定时查单发货/执行间隔/自动切换店铺/自动同步物流/执行时段等设置已移除，统一由订单页“定时任务”面板独立管理 -->
 
         <div class="setting-item">
           <div class="setting-info">

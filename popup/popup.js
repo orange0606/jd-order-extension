@@ -34,25 +34,7 @@ function bindEvents() {
   document.getElementById('btn-back').addEventListener('click', showMainView);
   document.getElementById('btn-save-settings').addEventListener('click', saveSettings);
 
-  // 定时查单发货开关联动
-  // 定时查单发货开关联动
-  document.getElementById('setting-auto-ship').addEventListener('change', (e) => {
-    const on = e.target.checked;
-    document.getElementById('auto-ship-interval-row').style.display = on ? 'flex' : 'none';
-    document.getElementById('auto-switch-shop-row').style.display = on ? 'flex' : 'none';
-    document.getElementById('auto-ship-timerange-row').style.display = on ? 'flex' : 'none';
-    if (!on) document.getElementById('auto-ship-timepick-row').style.display = 'none';
-  });
-
-  // 时间段开关联动
-  document.getElementById('setting-auto-ship-timerange').addEventListener('change', (e) => {
-    document.getElementById('auto-ship-timepick-row').style.display = e.target.checked ? 'flex' : 'none';
-  });
-
-  // 同步物流开关联动
-  document.getElementById('setting-auto-sync-express').addEventListener('change', (e) => {
-    document.getElementById('sync-express-interval-row').style.display = e.target.checked ? 'flex' : 'none';
-  });
+  // 定时查单发货/执行时段/同步物流开关联动已随设置项一并移除，定时任务面板独立管理
 }
 
 // ==================== 视图切换 ====================
@@ -268,32 +250,16 @@ async function loadSettings() {
     document.getElementById('setting-notification').checked = settings.showNotification !== false;
     document.getElementById('setting-block-soldout').checked = settings.blockSoldOutDialog !== false;
     document.getElementById('setting-soldout-compat').checked = settings.soldoutDebugCompat === true;
-    document.getElementById('setting-auto-ship').checked = settings.autoShip === true;
-    document.getElementById('setting-auto-ship-interval').value = settings.autoShipInterval || 30;
-    document.getElementById('setting-auto-ship-timerange').checked = settings.autoShipTimeRange === true;
-    // 自动切换店铺开关
-    document.getElementById('setting-auto-switch-shop').checked = settings.autoSwitchShop === true;
-    const cfg = (typeof ZHICHACHA_CONFIG !== 'undefined') ? ZHICHACHA_CONFIG : {};
-    const timeStart = settings.autoShipTimeStart || cfg.autoShipTimeStart || '07:00';
-    const timeEnd = settings.autoShipTimeEnd || cfg.autoShipTimeEnd || '22:00';
-    document.getElementById('setting-ship-time-start').value = timeStart;
-    document.getElementById('setting-ship-time-end').value = timeEnd;
-    document.getElementById('auto-ship-timerange-desc').textContent = `勾选后仅在 '${timeStart} ~ ${timeEnd}' 内自动执行`;
-    document.getElementById('auto-ship-interval-row').style.display = settings.autoShip ? 'flex' : 'none';
-    document.getElementById('auto-switch-shop-row').style.display = settings.autoShip ? 'flex' : 'none';
-    document.getElementById('auto-ship-timerange-row').style.display = settings.autoShip ? 'flex' : 'none';
-    document.getElementById('auto-ship-timepick-row').style.display = (settings.autoShip && settings.autoShipTimeRange) ? 'flex' : 'none';
-    document.getElementById('setting-auto-sync-express').checked = settings.autoSyncExpress === true;
+    // 定时查单发货/自动切换店铺/自动同步物流/执行时段设置已移除，统一由订单页“定时任务”面板独立管理
     document.getElementById('setting-assist-associate').checked = settings.assistAssociate === true;
     document.getElementById('setting-auto-confirm-virtual').checked = settings.autoConfirmVirtual === true;
     document.getElementById('setting-auto-confirm-bind-order').checked = settings.autoConfirmBindOrder === true;
     document.getElementById('setting-after-sale-bind').checked = settings.afterSaleBindShow !== false; // 默认开启
     document.getElementById('setting-canceled-assoc').checked = settings.canceledAssocCheck !== false;
-    document.getElementById('sync-express-interval-row').style.display = settings.autoSyncExpress ? 'flex' : 'none';
 
-    // 未登录或账号停用：8 项自动化功能强制关闭，且不允许打开
+    // 未登录或账号停用：自动化功能强制关闭，且不允许打开（定时任务面板另有独立登录限制）
     const gatedIds = [
-      'setting-auto-sync', 'setting-notification', 'setting-auto-switch-shop',
+      'setting-auto-sync', 'setting-notification',
       'setting-canceled-assoc', 'setting-assist-associate', 'setting-auto-confirm-virtual',
       'setting-auto-confirm-bind-order',
       'setting-block-soldout', 'setting-soldout-compat'
@@ -315,24 +281,12 @@ async function loadSettings() {
 }
 
 async function saveSettings() {
-  const interval = parseInt(document.getElementById('setting-auto-ship-interval').value, 10) || 30;
-  const expressInterval = parseInt(document.getElementById('setting-sync-express-interval').value, 10) || 120;
-  const autoShipOn = document.getElementById('setting-auto-ship').checked;
-  const userStart = document.getElementById('setting-ship-time-start').value || '07:00';
-  const userEnd = document.getElementById('setting-ship-time-end').value || '22:00';
+  // 定时查单发货/自动切换店铺/自动同步物流/执行时段设置已移除，统一由订单页“定时任务”面板独立管理
   const newSettings = {
     autoSync: document.getElementById('setting-auto-sync').checked,
     showNotification: document.getElementById('setting-notification').checked,
     blockSoldOutDialog: document.getElementById('setting-block-soldout').checked,
     soldoutDebugCompat: document.getElementById('setting-soldout-compat').checked,
-    autoShip: autoShipOn,
-    autoShipInterval: Math.max(1, Math.min(720, interval)),
-    autoSwitchShop: autoShipOn && document.getElementById('setting-auto-switch-shop').checked,
-    autoShipTimeRange: document.getElementById('setting-auto-ship-timerange').checked,
-    autoShipTimeStart: userStart,
-    autoShipTimeEnd: userEnd,
-    autoSyncExpress: document.getElementById('setting-auto-sync-express').checked,
-    autoSyncExpressInterval: Math.max(1, Math.min(1440, expressInterval)),
     assistAssociate: document.getElementById('setting-assist-associate').checked,
     canceledAssocCheck: document.getElementById('setting-canceled-assoc').checked,
     autoConfirmVirtual: document.getElementById('setting-auto-confirm-virtual').checked,

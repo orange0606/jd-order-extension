@@ -706,164 +706,9 @@
 
   // ==================== 悬浮面板UI ====================
 
-  function createFloatingPanel() {
-    if (floatingPanel) return;
-
-    floatingPanel = document.createElement('div');
-    floatingPanel.id = 'jd-order-scraper-panel';
-    floatingPanel.innerHTML = `
-      <div class="scraper-header">
-        <span class="scraper-title" id="panel-title">📦 智查查同步助手</span>
-        <span class="risk-badge" id="risk-badge" style="display:none;">
-          ⚠️ <span id="risk-count">0</span>
-        </span>
-        <div class="header-actions">
-          <button class="header-icon-btn jd-only" id="btn-header-sync" title="同步当前页">🔄</button>
-          <button class="header-icon-btn jd-only" id="btn-header-ship" title="立即查单发货">🚚</button>
-          <button class="header-icon-btn jd-only" id="btn-header-goto-express" title="同步物流（发取件码）">📮</button>
-          <button class="header-icon-btn jd-only" id="btn-header-unbought" title="采购巡检：扫描待出库订单采购情况">🔍</button>
-          <button class="header-icon-btn jd-only" id="btn-header-clear" title="清除风险提示">🧹</button>
-          <button class="header-icon-btn express-only" id="btn-header-express" title="立即同步物流" style="display:none;">📮</button>
-          <button class="scraper-minimize" title="最小化/展开">−</button>
-        </div>
-      </div>
-      <div class="scraper-body">
-        <div class="login-warning jd-only" id="login-warning" style="display:none;">
-          ⚠️ 未登录智查查，无法同步到服务器<br>
-          <span style="font-size:11px;">请点击插件图标登录</span>
-        </div>
-        <div class="login-warning jd-only" id="shop-warning" style="display:none; background:#fff7e6; border-color:#ffd591; color:#fa8c16;">
-          ⚠️ 当前店铺未绑定账号，无法同步<br>
-          <span style="font-size:11px;" id="shop-warning-text">请先在后台添加该店铺</span>
-        </div>
-        <div class="scraper-status jd-only" id="scraper-status">
-          <span class="status-dot status-info"></span>
-          <span class="status-text">初始化中...</span>
-        </div>
-        <div class="scraper-status jd-only" id="ship-status" style="display:none;">
-          <span class="status-dot status-info" id="ship-status-dot"></span>
-          <span class="status-text" id="ship-status-text"></span>
-        </div>
-        <div class="shop-switch-plan jd-only" id="shop-switch-plan" style="display:none;">
-          <div class="shop-switch-plan-title">
-            <span>🔁 店铺自动切换计划</span>
-            <button type="button" class="shop-switch-run-btn" id="btn-switch-run-now" title="立即按计划切换到下一个店铺并发货">立即执行</button>
-          </div>
-          <div class="shop-switch-plan-list" id="shop-switch-plan-list"></div>
-        </div>
-        <div class="scraper-status express-only" id="express-status" style="display:none;">
-          <span class="status-dot status-info" id="express-status-dot"></span>
-          <span class="status-text" id="express-status-text"></span>
-        </div>
-        <div class="scraper-actions express-only" id="express-actions" style="display:none;">
-          <button class="scraper-btn scraper-btn-primary" id="btn-sync-express">
-            📮 立即同步物流状态
-          </button>
-        </div>
-      </div>
-    `;
-
-    document.body.appendChild(floatingPanel);
-
-    // 同步按钮（标题栏和内容区共用）
-    const handleSyncClick = () => handleManualSync();
-    const btnScrape = document.getElementById('btn-scrape');
-    if (btnScrape) btnScrape.addEventListener('click', handleSyncClick);
-    document.getElementById('btn-header-sync').addEventListener('click', handleSyncClick);
-
-    // 立即查单发货按钮（标题栏）
-    document.getElementById('btn-header-ship').addEventListener('click', () => {
-      runBatchShipOnce(true);
-    });
-
-    // 立即执行一次"切换店铺批量查单发货"轮转（手动，不受时段限制）
-    const btnSwitchRunNow = document.getElementById('btn-switch-run-now');
-    if (btnSwitchRunNow) {
-      btnSwitchRunNow.addEventListener('click', () => {
-        manualRunSwitchOnce();
-      });
-    }
-
-    // 跳转京巴士同步物流页
-    document.getElementById('btn-header-goto-express').addEventListener('click', () => {
-      const url = (typeof ZHICHACHA_CONFIG !== 'undefined' && ZHICHACHA_CONFIG.jbsExpressUrl) || 'https://pay.jingbashi.com/back.php/order/status?ref=addtabs';
-      window.open(url, '_blank');
-    });
-
-    // 立即同步物流按钮（标题栏和内容区）
-    const handleExpressClick = () => runSyncExpressOnce(true);
-    document.getElementById('btn-header-express').addEventListener('click', handleExpressClick);
-    document.getElementById('btn-sync-express').addEventListener('click', handleExpressClick);
-
-    // 清除按钮（标题栏和内容区共用）
-    const handleClearClick = () => {
-      clearRiskMarks();
-      updateStatus('已清除页面风险提示', 'info');
-    };
-    const btnClearRisk = document.getElementById('btn-clear-risk');
-    if (btnClearRisk) btnClearRisk.addEventListener('click', handleClearClick);
-    document.getElementById('btn-header-clear').addEventListener('click', handleClearClick);
-
-    // 手动检测48小时内未采购订单
-    const btnCheckUnbought = document.getElementById('btn-check-unbought');
-    if (btnCheckUnbought) {
-      btnCheckUnbought.addEventListener('click', function () {
-        removeUnboughtUI();
-        runUnboughtCheck();
-      });
-    }
-    const btnHeaderUnbought = document.getElementById('btn-header-unbought');
-    if (btnHeaderUnbought) {
-      btnHeaderUnbought.addEventListener('click', function () {
-        removeUnboughtUI();
-        runUnboughtCheck();
-      });
-    }
-
-    // 最小化/展开
-    document.querySelector('.scraper-minimize').addEventListener('click', () => {
-      floatingPanel.classList.toggle('minimized');
-    });
-
-    // 拖拽功能
-    const header = floatingPanel.querySelector('.scraper-header');
-    let isDragging = false;
-    let startX, startY, startLeft, startTop;
-
-    header.style.cursor = 'move';
-
-    header.addEventListener('mousedown', (e) => {
-      // 点到按钮不拖拽
-      if (e.target.closest('button')) return;
-      isDragging = true;
-      startX = e.clientX;
-      startY = e.clientY;
-      const rect = floatingPanel.getBoundingClientRect();
-      startLeft = rect.left;
-      startTop = rect.top;
-      floatingPanel.style.right = 'auto';
-      floatingPanel.style.left = startLeft + 'px';
-      floatingPanel.style.top = startTop + 'px';
-      e.preventDefault();
-    });
-
-    document.addEventListener('mousemove', (e) => {
-      if (!isDragging) return;
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      let newLeft = startLeft + dx;
-      let newTop = startTop + dy;
-      // 不超出视窗
-      newLeft = Math.max(0, Math.min(newLeft, window.innerWidth - floatingPanel.offsetWidth));
-      newTop = Math.max(0, Math.min(newTop, window.innerHeight - 40));
-      floatingPanel.style.left = newLeft + 'px';
-      floatingPanel.style.top = newTop + 'px';
-    });
-
-    document.addEventListener('mouseup', () => {
-      isDragging = false;
-    });
-  }
+  // 原“智查查同步助手”浮动面板已彻底移除：
+  // 同步当前页/采购巡检/清除风险提示已迁移到定时任务面板顶部图标区，查单发货/同步物流/切换店铺已迁移为定时任务，其余旧按钮废弃
+  function createFloatingPanel() { /* 不再创建旧浮动面板，相关状态函数均有空元素保护 */ }
 
   /**
    * 手动同步按钮
@@ -935,7 +780,7 @@
   async function updateShopStatus() {
     const shopWarning = document.getElementById('shop-warning');
     const shopWarningText = document.getElementById('shop-warning-text');
-    if (!shopWarning) return;
+    // 旧浮动面板已移除：无警告元素时仍须执行店铺绑定校验，仅跳过提示展示
 
     // 先从后端刷新最新的已绑定店铺列表
     await new Promise(resolve => {
@@ -948,15 +793,17 @@
 
     const result = await checkCurrentShopBound();
     if (result.bound) {
-      shopWarning.style.display = 'none';
+      if (shopWarning) shopWarning.style.display = 'none';
       return true;
     } else {
-      if (result.shopId) {
-        shopWarningText.textContent = `当前店铺ID: ${result.shopId}，请先在后台添加`;
-      } else {
-        shopWarningText.textContent = '未获取到店铺信息，请确认已登录京东商家后台';
+      if (shopWarningText) {
+        if (result.shopId) {
+          shopWarningText.textContent = `当前店铺ID: ${result.shopId}，请先在后台添加`;
+        } else {
+          shopWarningText.textContent = '未获取到店铺信息，请确认已登录京东商家后台';
+        }
       }
-      shopWarning.style.display = 'block';
+      if (shopWarning) shopWarning.style.display = 'block';
       return false;
     }
   }
@@ -1421,6 +1268,7 @@
       const rect = el.getBoundingClientRect();
       el.style.left = rect.left + "px";
       el.style.top = rect.top + "px";
+      el.style.right = "auto"; // 初始右上角定位，拖动开始改为left坐标，避免left/right同时存在拉伸
       el.style.transform = "none";
       startX = e.clientX; startY = e.clientY;
       startLeft = rect.left; startTop = rect.top;
@@ -1508,7 +1356,7 @@
         try { chrome.runtime.sendMessage({ type: 'ZCC_AFS_BIND_QUERY', orderIds: batch }, resolve); }
         catch (e) { resolve(null); }
       });
-      if (resp && resp.notLogin) { showUnboughtNotice('🔑 京巴士未登录', '未登录京巴士时无法查询采购关联单，检测结果不可信。请先登录京巴士后再重新检测。', '', true); return; }
+      if (resp && resp.notLogin) { showUnboughtNotice('🔑 京巴士登录状态已失效', '智查查插件已登录，但京巴士接口仍返回未登录。采购巡检使用的是京巴士登录状态（与插件账号不是同一套），请在京巴士页面重新登录后再检测。', '', true); return; }
       if (!resp || !resp.ok) { showUnboughtNotice('⚠️ 检测失败', (resp && resp.error) || '关联单接口查询失败，请稍后重试。', '', false); return; }
       const rows = (resp.data && resp.data.rows) || [];
       rows.forEach(function (row) {
@@ -1633,6 +1481,753 @@
     ["jump-unbought-btn", "zcc-unbought-alert"].forEach(function (id) { const e = document.getElementById(id); if (e) e.remove(); });
     window.__zccGotoNextUnbought = null;
     __unboughtRunTimer = setTimeout(runUnboughtCheck, 8000);
+  }
+
+  // ==================== 待出库 · 定时任务面板 ====================
+  // 任务0：查单发货（由原浮动面板定时查单发货迁入，固定30分钟，不再使用设置中的定时时间与时间范围）
+  // 任务：自动切换店铺（固定每1小时10分，执行后重置 查单发货/已取消关联单数量/同步物流状态 的计时并立即重新触发）
+  // 任务1：每30分钟通过小窗加载“已取消”订单页，取全部订单号后调京巴士跟单接口，统计仍关联采购单数量
+  // 任务2：每1小时通过小窗载入京巴士物流状态页，5秒后自动点击“同步物流状态(并发送取件码)”，点击后锁5分钟防重复执行
+  // 自动定时执行时段可在面板底部编辑（默认08:00~20:00，本地缓存）；手动“立即执行”不受时段限制；小窗类任务可勾选“显示视图”查看执行过程（约500x600）
+  const TASK_AUTO_SHIP_INTERVAL = 30 * 60 * 1000; // 任务0：查单发货固定30分钟一轮
+  const TASK_SWITCH_SHOP_INTERVAL = 70 * 60 * 1000; // 自动切换店铺：每1小时10分一轮
+  const TASK_CANCELED_INTERVAL = 30 * 60 * 1000; // 任务1：30分钟一轮
+  const TASK_EXPRESS_INTERVAL = 60 * 60 * 1000;  // 任务2：1小时一轮
+  const TASK_EXPRESS_LOCK = 5 * 60 * 1000;       // 任务2：同步可能执行5分钟，5分钟内不允许再执行
+  let __taskPanelTimer = null;       // 全局仅一个调度唤醒定时器：时段内每分钟对齐检查，时段外睡到下个开始时间
+  let __taskPanelVisibilityBound = false; // 是否已监听标签页可见性（回前台重排定时器）
+  let __taskGreetingStart = 0;       // 可爱提醒卡片计时起点（本次页面打开至今，每分钟+1）
+  let __taskPanelLoginRefreshed = false; // 页面首次打开10秒后是否已重新获取登录态
+  let __taskPanelReadyAt = 0;        // 首轮自动补执行最早时间（页面打开10秒后，手动立即执行不受限）
+  let __taskShipRunning = false;     // 任务0防重入
+  let __taskSwitchRunning = false;   // 自动切换店铺防重入
+  let __taskCanceledRunning = false; // 任务1防重入
+  let __taskExpressRunning = false;  // 任务2防重入
+  let __taskCanceledFrame = null;    // 任务1小窗容器
+  let __taskExpressFrame = null;     // 任务2小窗容器
+
+  function getTaskSwitch(key) {
+    return new Promise(function (resolve) {
+      try { chrome.storage.local.get(key, function (st) { resolve(!!(st && st[key])); }); }
+      catch (e) { resolve(false); }
+    });
+  }
+  function setTaskSwitch(key, v) {
+    try { const o = {}; o[key] = !!v; chrome.storage.local.set(o); } catch (e) {}
+  }
+  function getTaskLastRun(key) {
+    return new Promise(function (resolve) {
+      try { chrome.storage.local.get(key, function (st) { resolve((st && st[key]) || 0); }); }
+      catch (e) { resolve(0); }
+    });
+  }
+  function setTaskLastRun(key) {
+    try { const o = {}; o[key] = Date.now(); chrome.storage.local.set(o); } catch (e) {}
+  }
+  // 定时任务仅在 8:00~20:00 自动执行
+  // 自动执行时段：本地缓存 zcc_task_time_window，读不到/格式非法时使用默认 08:00~20:00
+  const TASK_TIME_WINDOW_KEY = 'zcc_task_time_window';
+  const TASK_TIME_WINDOW_DEFAULT = { start: '08:00', end: '20:00' };
+  let __taskTimeWindow = { start: TASK_TIME_WINDOW_DEFAULT.start, end: TASK_TIME_WINDOW_DEFAULT.end };
+  function isValidTaskTimeText(t) { return /^([01]\d|2[0-3]):[0-5]\d$/.test(String(t || '')); }
+  function taskTimeToMin(t) { const a = String(t).split(':'); return Number(a[0]) * 60 + Number(a[1]); }
+  function inTaskTimeWindow() {
+    const d = new Date();
+    const cur = d.getHours() * 60 + d.getMinutes();
+    const start = taskTimeToMin(__taskTimeWindow.start);
+    const end = taskTimeToMin(__taskTimeWindow.end);
+    if (start === end) return true; // 起止相同视为全天可执行
+    if (start < end) return cur >= start && cur < end;
+    return cur >= start || cur < end; // 支持跨天（如 20:00~08:00）
+  }
+  function updateTaskTimeWindowText() {
+    const el = document.getElementById('zcc-tp-time-window');
+    if (el) el.textContent = '自动执行仅 ' + __taskTimeWindow.start + '~' + __taskTimeWindow.end;
+    const si = document.getElementById('zcc-tp-time-start');
+    const ei = document.getElementById('zcc-tp-time-end');
+    if (si) si.value = __taskTimeWindow.start;
+    if (ei) ei.value = __taskTimeWindow.end;
+  }
+  // 可爱执行提醒：时段内每分钟累计“已为您执行任务xx分钟/小时”；时段外按时间显示夜深/早安等休息提醒
+  function updateTaskGreeting() {
+    const title = document.getElementById('zcc-tp-greeting-title');
+    const sub = document.getElementById('zcc-tp-greeting-sub');
+    const icon = document.getElementById('zcc-tp-greeting-icon');
+    if (!title || !sub) return;
+    if (!__taskGreetingStart) __taskGreetingStart = Date.now();
+    const h = new Date().getHours();
+    if (inTaskTimeWindow()) {
+      const mins = Math.max(0, Math.floor((Date.now() - __taskGreetingStart) / 60000));
+      let text;
+      if (mins < 60) text = '已为您执行任务 ' + mins + ' 分钟';
+      else {
+        const hours = Math.floor(mins / 60);
+        const left = mins % 60;
+        text = '已为您执行任务 ' + hours + ' 小时' + (left ? ' ' + left + ' 分钟' : '');
+      }
+      if (icon) icon.textContent = '🐻';
+      title.textContent = text;
+      sub.textContent = '我会乖乖盯着任务，到点就自动开工～';
+      return;
+    }
+    if (h >= 23 || h < 5) {
+      if (icon) icon.textContent = '🌙';
+      title.textContent = '夜深了，早点睡';
+      sub.textContent = '订单先交给我，到时间我再叫你～';
+    } else if (h < 8) {
+      if (icon) icon.textContent = '🌅';
+      title.textContent = '早安，新的一天开始啦';
+      sub.textContent = '先喝口水，执行时段到了我就开工～';
+    } else {
+      if (icon) icon.textContent = '😴';
+      title.textContent = '当前不在执行时段，先休息一下吧';
+      sub.textContent = '到点我会自动醒来执行任务～';
+    }
+    const next = nextTaskWindowStart(Date.now());
+    if (next > Date.now()) {
+      const d = new Date(next);
+      const txt = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+      sub.textContent += ' 下次开工 ' + (d.toDateString() !== new Date().toDateString() ? '明天 ' : '') + txt;
+    }
+  }
+
+  function loadTaskTimeWindow() {
+    try {
+      chrome.storage.local.get(TASK_TIME_WINDOW_KEY, function (st) {
+        const w = st && st[TASK_TIME_WINDOW_KEY];
+        // 读不到缓存或格式非法时保持默认，不覆盖已有合法配置
+        if (w && isValidTaskTimeText(w.start) && isValidTaskTimeText(w.end)) {
+          __taskTimeWindow = { start: w.start, end: w.end };
+        }
+        updateTaskTimeWindowText();
+      });
+    } catch (e) { updateTaskTimeWindowText(); }
+  }
+
+  // 面板状态同时写入 storage，切换标签重建面板后可恢复上次结果
+  const TASK_STATUS_CONF = {
+    ship: { el: 'zcc-task-ship-status', store: 'zcc_task_auto_ship_last' },
+    switchShop: { el: 'zcc-task-switchShop-status', store: 'zcc_task_switch_shop_last' },
+    canceled: { el: 'zcc-task-canceled-status', store: 'zcc_task_canceled_assoc_last' },
+    express: { el: 'zcc-task-express-status', store: 'zcc_task_express_last' }
+  };
+  function setTaskStatus(kind, text, cls) {
+    const conf = TASK_STATUS_CONF[kind];
+    const box = document.getElementById(conf.el);
+    if (box) { box.textContent = text; box.className = 'zcc-task-status ' + (cls || ''); }
+    try { const o = {}; o[conf.store] = { time: Date.now(), text: text, cls: cls || '' }; chrome.storage.local.set(o); } catch (e) {}
+  }
+
+  // 面板/小窗拖动：按住把手拖动，位移小于4px视为点击（不影响折叠等点击事件）；ignore 选择器内的元素不触发拖动
+  function makePanelDraggable(panel, handle, ignore) {
+    let sx = 0, sy = 0, ox = 0, oy = 0, moved = false, dragging = false;
+    handle.addEventListener('mousedown', function (e) {
+      if (ignore && e.target.closest(ignore)) return;
+      dragging = true; moved = false;
+      sx = e.clientX; sy = e.clientY;
+      const r = panel.getBoundingClientRect(); ox = r.left; oy = r.top;
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', function (e) {
+      if (!dragging) return;
+      const dx = e.clientX - sx, dy = e.clientY - sy;
+      if (Math.abs(dx) + Math.abs(dy) > 4) moved = true;
+      if (moved) {
+        panel.style.left = (ox + dx) + 'px'; panel.style.top = (oy + dy) + 'px';
+        panel.style.right = 'auto'; panel.style.transform = 'none';
+      }
+    });
+    document.addEventListener('mouseup', function () { dragging = false; });
+    // 拖动后抑制紧接着的一次点击（避免拖动被当成折叠/关闭）
+    handle.addEventListener('click', function (e) {
+      if (moved) { e.stopImmediatePropagation(); e.preventDefault(); moved = false; }
+    }, true);
+  }
+
+  // 通用任务小窗：visible=true 时显示为约500x600的可见弹窗（标题栏可拖动、带关闭按钮），否则屏外隐藏加载
+  function createTaskFrame(id, url, visible, title) {
+    const old = document.getElementById(id); if (old) old.remove();
+    const wrap = document.createElement('div');
+    wrap.id = id;
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'width:100%;height:100%;border:0;display:block;';
+    iframe.src = url;
+    if (visible) {
+      wrap.setAttribute('data-visible', '1');
+      wrap.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:500px;height:600px;max-width:94vw;max-height:90vh;z-index:2147483646;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.3);display:flex;flex-direction:column;';
+      const bar = document.createElement('div');
+      bar.style.cssText = 'flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f5f7fa;font-size:12px;color:#606266;cursor:move;user-select:none;';
+      const t = document.createElement('span'); t.textContent = title || '任务小窗';
+      const close = document.createElement('button');
+      close.type = 'button'; close.textContent = '✕ 关闭';
+      close.style.cssText = 'border:1px solid #dcdfe6;background:#fff;border-radius:4px;padding:2px 10px;font-size:12px;cursor:pointer;color:#606266;';
+      close.addEventListener('click', function () { wrap.remove(); });
+      bar.appendChild(t); bar.appendChild(close);
+      wrap.appendChild(bar);
+      makePanelDraggable(wrap, bar, 'button'); // 标题栏拖动，关闭按钮除外
+      iframe.style.flex = '1 1 auto';
+    } else {
+      wrap.style.cssText = 'position:fixed;left:-10000px;top:0;width:1280px;height:800px;z-index:-1;';
+    }
+    wrap.appendChild(iframe);
+    document.body.appendChild(wrap);
+    return { wrap: wrap, iframe: iframe };
+  }
+  // 任务结束自动关闭小窗（含可见小窗）
+  function destroyTaskFrame(ref) {
+    if (ref && ref.wrap) ref.wrap.remove();
+  }
+
+  // 任务集中配置：名称/图标/间隔/存储键/是否有“显示视图”/是否需登录/执行步骤
+  // 未登录智查查时仅查单发货可开启，其余任务开关与按钮禁用且不执行
+  const TASK_DEFS = [
+    { kind: 'ship', icon: '🚚', name: '查单发货', intervalText: '每30分钟', swKey: 'zcc_task_auto_ship', view: false, needLogin: false,
+      steps: ['查找发货按钮并执行', '完成发货'] },
+    { kind: 'canceled', icon: '🔗', name: '已取消订单关联单数量', intervalText: '每30分钟', swKey: 'zcc_task_canceled_assoc', view: true, viewKey: 'zcc_task_canceled_assoc_view', needLogin: true,
+      steps: ['小窗加载已取消订单页', '接口直查关联单', '汇总结果'] },
+    { kind: 'express', icon: '📮', name: '同步物流状态(并发送取件码)', intervalText: '每1小时', swKey: 'zcc_task_express_sync', view: true, viewKey: 'zcc_task_express_view', needLogin: true,
+      steps: ['载入物流状态页', '自动点击同步并开始发送', '等待执行(约5分钟)'] },
+    { kind: 'switchShop', icon: '🔁', name: '自动切换店铺', intervalText: '每1小时10分', swKey: 'zcc_task_switch_shop', view: false, needLogin: true,
+      steps: ['执行店铺切换'] }
+  ];
+
+  function isTaskRunning(kind) {
+    if (kind === 'ship') return __taskShipRunning;
+    if (kind === 'canceled') return __taskCanceledRunning;
+    if (kind === 'express') return __taskExpressRunning;
+    if (kind === 'switchShop') return __taskSwitchRunning || isSwitchingShop; // 切换店铺跨页面恢复期间也算执行中
+    return false;
+  }
+  // 详情区仅任务开启或执行中时显示；未开启只保留任务名称那一栏
+  function updateTaskDetail(kind) {
+    const p = document.getElementById('zcc-task-panel'); if (!p) return;
+    const sw = p.querySelector('#zcc-task-' + kind + '-switch');
+    const detail = p.querySelector('#zcc-task-' + kind + '-detail');
+    if (detail) detail.style.display = ((sw && sw.checked) || isTaskRunning(kind)) ? '' : 'none';
+  }
+  // 执行中：隐藏立即执行图标、禁用顶部快捷图标、显示“任务执行中”与步骤，避免多次触发
+  function setTaskRunning(kind, on) {
+    const p = document.getElementById('zcc-task-panel'); if (!p) return;
+    const icon = p.querySelector('#zcc-tp-icon-' + kind);
+    if (icon) { icon.disabled = on; icon.classList.toggle('is-disabled', on); }
+    const runningRow = p.querySelector('#zcc-task-' + kind + '-running');
+    if (runningRow) runningRow.style.display = on ? '' : 'none';
+    if (!on) { const steps = p.querySelector('#zcc-task-' + kind + '-steps'); if (steps) steps.innerHTML = ''; }
+    updateTaskDetail(kind);
+  }
+  // 按顺序显示执行步骤：已完成✓ / 当前⏳ / 未进行灰点
+  function setTaskStep(kind, idx) {
+    const def = TASK_DEFS.find(function (t) { return t.kind === kind; });
+    const p = document.getElementById('zcc-task-panel'); if (!def || !p) return;
+    const box = p.querySelector('#zcc-task-' + kind + '-steps'); if (!box) return;
+    box.innerHTML = def.steps.map(function (s, i) {
+      const cls = i < idx ? 'is-done' : (i === idx ? 'is-active' : '');
+      return '<div class="zcc-tp-step ' + cls + '">' + (i < idx ? '✓' : (i === idx ? '⏳' : '·')) + ' ' + s + '</div>';
+    }).join('');
+  }
+  function runTaskByKind(kind) {
+    if (kind === 'ship') runTaskAutoShip();
+    else if (kind === 'canceled') runTaskCanceledAssoc();
+    else if (kind === 'express') runTaskExpressSync();
+    else if (kind === 'switchShop') runTaskSwitchShop();
+  }
+
+  async function ensureTaskPanel() {
+    let p = document.getElementById('zcc-task-panel');
+    if (p) return p;
+    const logged = await zccHasToken(); // 未登录仅查单发货可用
+    p = document.createElement('div');
+    p.id = 'zcc-task-panel';
+    let bodyHtml = '<div class="zcc-tp-greeting"><span class="zcc-tp-greeting-emoji" id="zcc-tp-greeting-icon">🐻</span>' +
+      '<div class="zcc-tp-greeting-text"><div class="zcc-tp-greeting-title" id="zcc-tp-greeting-title">已为您执行任务 0 分钟</div>' +
+      '<div class="zcc-tp-greeting-sub" id="zcc-tp-greeting-sub">我会乖乖盯着任务，到点就自动开工～</div></div></div>';
+    TASK_DEFS.forEach(function (t, i) {
+      const disabled = t.needLogin && !logged;
+      bodyHtml +=
+        (i ? '<div class="zcc-tp-divider"></div>' : '') +
+        '<div class="zcc-tp-task" data-kind="' + t.kind + '">' +
+        '  <label class="zcc-tp-name" title="' + t.name + (disabled ? '（需登录智查查后使用）' : '') + '"><input type="checkbox" id="zcc-task-' + t.kind + '-switch"' + (disabled ? ' disabled' : '') + '> <span class="zcc-tp-name-text">' + t.icon + ' ' + t.name + '</span></label>' +
+        (t.view ? '<label class="zcc-tp-view"><input type="checkbox" id="zcc-task-' + t.kind + '-view"> 视图</label>' : '') +
+        '  <span class="zcc-tp-interval">' + t.intervalText + '</span>' +
+        '  <span class="zcc-tp-next" id="zcc-task-' + t.kind + '-next"></span>' +
+        '</div>' +
+        '<div class="zcc-tp-detail" id="zcc-task-' + t.kind + '-detail" style="display:none;">' +
+        '  <div class="zcc-tp-running" id="zcc-task-' + t.kind + '-running" style="display:none;">⏳ 任务执行中<div class="zcc-tp-steps" id="zcc-task-' + t.kind + '-steps"></div></div>' +
+        '  <div class="zcc-task-status" id="zcc-task-' + t.kind + '-status">尚未执行</div>' +
+        '</div>';
+    });
+    p.innerHTML =
+      '<div class="zcc-tp-header" id="zcc-tp-header">⏰ 定时任务<span class="zcc-tp-binds" id="zcc-tp-binds" style="display:none;"></span>' +
+      '<span class="zcc-tp-icons">' +
+      '<button type="button" class="zcc-tp-icon" id="zcc-tp-icon-sync" title="同步当前页">🔄</button>' +
+      '<button type="button" class="zcc-tp-icon" id="zcc-tp-icon-unbought" title="采购巡检：扫描待出库订单采购情况">🔍</button>' +
+      '<button type="button" class="zcc-tp-icon" id="zcc-tp-icon-clear" title="清除风险提示">🧹</button>' +
+      TASK_DEFS.map(function (t) {
+        const disabled = t.needLogin && !logged;
+        return '<button type="button" class="zcc-tp-icon" id="zcc-tp-icon-' + t.kind + '" title="立即执行：' + t.name + '"' + (disabled ? ' disabled' : '') + '>' + t.icon + '</button>';
+      }).join('') +
+      '</span><span class="zcc-tp-toggle" id="zcc-tp-toggle">折叠 ▲</span></div>' +
+      '<div class="zcc-tp-body" id="zcc-tp-body">' + bodyHtml +
+      '<div class="zcc-tp-footer"><span id="zcc-tp-time-window">自动执行仅 08:00~20:00</span> · 需保持本页打开' +
+      '<button type="button" class="zcc-tp-time-edit" id="zcc-tp-time-edit" title="编辑自动执行时间范围">✎</button></div>' +
+      '<div class="zcc-tp-time-editor" id="zcc-tp-time-editor" style="display:none;">' +
+      '<input type="time" id="zcc-tp-time-start" value="08:00"><span>~</span><input type="time" id="zcc-tp-time-end" value="20:00">' +
+      '<button type="button" id="zcc-tp-time-save">保存</button><span class="zcc-tp-time-tip" id="zcc-tp-time-tip"></span></div></div>';
+    document.body.appendChild(p);
+    makePanelDraggable(p, p.querySelector('#zcc-tp-header'), '.zcc-tp-toggle, .zcc-tp-icon'); // 面板标题栏拖动，折叠/快捷图标按钮除外
+    // 面板仅由用户手动折叠/展开，不再进入页面后自动折叠
+    p.querySelector('#zcc-tp-header').addEventListener('click', function (e) {
+      if (e.target.closest('.zcc-tp-icon')) return; // 快捷图标不触发折叠
+      const body = p.querySelector('#zcc-tp-body');
+      const collapsed = body.style.display === 'none';
+      body.style.display = collapsed ? 'block' : 'none';
+      p.querySelector('#zcc-tp-toggle').textContent = collapsed ? '折叠 ▲' : '展开 ▼';
+    });
+    // 原“智查查同步助手”浮动面板迁移来的三个功能：同步当前页 / 采购巡检 / 清除风险提示
+    p.querySelector('#zcc-tp-icon-sync').addEventListener('click', function () { handleManualSync(); });
+    p.querySelector('#zcc-tp-icon-unbought').addEventListener('click', function () { removeUnboughtUI(); runUnboughtCheck(); });
+    p.querySelector('#zcc-tp-icon-clear').addEventListener('click', function () { clearRiskMarks(); });
+    // 执行时段编辑：展开/收起编辑器；保存到本地缓存后自动刷新浏览器，让新定时计划从首屏重新初始化
+    p.querySelector('#zcc-tp-time-edit').addEventListener('click', function () {
+      const ed = p.querySelector('#zcc-tp-time-editor');
+      ed.style.display = ed.style.display === 'none' ? 'flex' : 'none';
+      updateTaskTimeWindowText();
+    });
+    p.querySelector('#zcc-tp-time-save').addEventListener('click', function () {
+      const start = p.querySelector('#zcc-tp-time-start').value;
+      const end = p.querySelector('#zcc-tp-time-end').value;
+      const tip = p.querySelector('#zcc-tp-time-tip');
+      const saveBtn = p.querySelector('#zcc-tp-time-save');
+      if (!isValidTaskTimeText(start) || !isValidTaskTimeText(end)) {
+        tip.textContent = '时间格式不正确';
+        tip.className = 'zcc-tp-time-tip is-error';
+        return;
+      }
+      __taskTimeWindow = { start: start, end: end };
+      saveBtn.disabled = true; // 防止保存期间重复点击触发多次刷新
+      tip.textContent = '已保存，正在刷新页面...';
+      tip.className = 'zcc-tp-time-tip is-ok';
+      try {
+        chrome.storage.local.set({ zcc_task_time_window: { start: start, end: end } }, function () {
+          if (chrome.runtime && chrome.runtime.lastError) {
+            saveBtn.disabled = false;
+            tip.textContent = '保存失败：' + chrome.runtime.lastError.message;
+            tip.className = 'zcc-tp-time-tip is-error';
+            return;
+          }
+          location.reload(); // 必须等缓存写入完成再刷新，避免新页面读回旧时段
+        });
+      } catch (e) {
+        saveBtn.disabled = false;
+        tip.textContent = '保存失败，请重试';
+        tip.className = 'zcc-tp-time-tip is-error';
+      }
+    });
+    // 各任务：顶部快捷图标 + 开关 + 名称后立即执行图标 + 显示视图
+    for (const t of TASK_DEFS) {
+      p.querySelector('#zcc-tp-icon-' + t.kind).addEventListener('click', function () { runTaskByKind(t.kind); });
+      const sw = p.querySelector('#zcc-task-' + t.kind + '-switch');
+      sw.checked = (t.needLogin && !logged) ? false : await getTaskSwitch(t.swKey); // 未登录时其他任务默认关闭
+      sw.addEventListener('change', function () {
+        setTaskSwitch(t.swKey, sw.checked);
+        if (sw.checked) runTaskByKind(t.kind); // 开启后立即执行一次
+        else setTaskStatus(t.kind, '已关闭', '');
+        updateTaskDetail(t.kind);
+        updateTaskNextTimes();
+      });
+      if (t.view) {
+        const view = p.querySelector('#zcc-task-' + t.kind + '-view');
+        view.checked = await getTaskSwitch(t.viewKey);
+        view.addEventListener('change', function () { setTaskSwitch(t.viewKey, view.checked); });
+      }
+      updateTaskDetail(t.kind);
+    }
+    // 恢复各任务的上次执行结果（不覆盖正在显示的状态）
+    try {
+      chrome.storage.local.get(['zcc_task_auto_ship_last', 'zcc_task_switch_shop_last', 'zcc_task_canceled_assoc_last', 'zcc_task_express_last'], function (st) {
+        [['ship', 'zcc_task_auto_ship_last'], ['switchShop', 'zcc_task_switch_shop_last'], ['canceled', 'zcc_task_canceled_assoc_last'], ['express', 'zcc_task_express_last']].forEach(function (pair) {
+          const last = st && st[pair[1]];
+          // 登录状态会变化：“未登录智查查，无法执行”属于当时状态，不应跨页面恢复（已登录时尤其误导；查单发货本身未登录也可执行）
+          if (last && last.text && last.text.indexOf('未登录智查查') !== -1) return;
+          // 刷新页面后任务不可能仍在执行中：is-checking 类历史状态（含“页面未就绪/正在执行”）不恢复，避免残留卡住假象
+          if (last && last.cls === 'is-checking') return;
+          const box = document.getElementById(TASK_STATUS_CONF[pair[0]].el);
+          if (last && last.text && box && box.textContent === '尚未执行') {
+            box.textContent = last.text;
+            box.className = 'zcc-task-status ' + (last.cls || '');
+          }
+        });
+      });
+    } catch (e) {}
+    updateTaskBindBadge();   // 恢复头部关联单数量角标
+    updateTaskTimeWindowText(); // 同步执行时段文本（缓存可能先于面板创建完成读取）
+    updateTaskGreeting();    // 初始化可爱执行提醒（之后随每分钟调度刷新）
+    updateTaskNextTimes();   // 显示各任务下一次预计执行时间
+    return p;
+  }
+
+  function setupTaskPanel() {
+    ensureTaskPanel();
+    loadTaskTimeWindow(); // 读取本地执行时段配置（无缓存则默认08:00~20:00）
+    // 页面刚打开时登录token/页面DOM可能尚未就绪：首轮自动补执行延后10秒，并在第10秒重新获取登录态、重建面板
+    if (!__taskPanelLoginRefreshed) {
+      __taskPanelLoginRefreshed = true;
+      __taskPanelReadyAt = Date.now() + 10000;
+      setTimeout(function () {
+        if (document.getElementById('zcc-task-panel')) {
+          removeTaskPanel();
+          ensureTaskPanel().then(function () { updateTaskNextTimes(); }); // 重新读取最新登录态，恢复各任务开关
+        } else {
+          updateTaskNextTimes();
+        }
+      }, 10000);
+    }
+    // 页面刷新后恢复“切换中”的店铺轮转：京东整页切换、局部切换后的主动reload，都由这里接管（resumeAfterSwitch 内部有防重入锁）
+    getShopSwitchState().then(function (s) {
+      if (s && s.phase === 'switching' && s.targetShopId) {
+        console.log('%c[切换店铺] 检测到切换中状态（页面刚刷新），恢复执行', 'color:#e6a23c;font-weight:bold;');
+        // 恢复进展同步到定时任务面板（旧 updateShipStatus 面板已删除，不再只写旧状态）
+        setTaskRunning('switchShop', true);
+        setTaskStep('switchShop', 0);
+        setTaskStatus('switchShop', '检测到切换状态，正在恢复执行...', 'is-checking');
+        resumeAfterSwitch(s);
+      }
+    });
+    // 页面刷新时重新判断：时段内启动每分钟检查，时段外睡到下个开始时间；不再固定10分钟轮询
+    scheduleTaskWake();
+    if (!__taskPanelVisibilityBound) {
+      __taskPanelVisibilityBound = true;
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) { scheduleTaskWake(); updateTaskNextTimes(); updateTaskGreeting(); } // 后台标签页可能节流，回到前台立即重排并补查到点任务
+      });
+    }
+  }
+  function removeTaskPanel() {
+    const p = document.getElementById('zcc-task-panel'); if (p) p.remove(); // 只移除面板，后台计时继续
+  }
+
+  // 统一调度：单一定时器。时段内每分钟对齐检查一次到点任务；不在时段则休眠到下一个时段开始时间，避免无效空转
+  function taskSchedulerTick() {
+    if (Date.now() < __taskPanelReadyAt) { scheduleTaskWake(); return; } // 页面打开前10秒不自动执行
+    updateTaskNextTimes(); // 到点任务会在时段内直接补执行，函数内有防重入锁，重复调用安全
+    updateTaskGreeting();  // 每分钟更新一次可爱提醒的累计执行时长
+    scheduleTaskWake(); // 每次检查后按最新时间窗重新安排下一次唤醒
+  }
+
+  // 计算距离 timestamp 之后最近一个可执行时刻：若本身在时段内返回原时刻，否则返回下一个时段开始时间（支持跨天）
+  function nextTaskWindowStart(timestamp) {
+    const start = taskTimeToMin(__taskTimeWindow.start);
+    const end = taskTimeToMin(__taskTimeWindow.end);
+    if (start === end) return timestamp; // 全天
+    const d = new Date(timestamp);
+    const cur = d.getHours() * 60 + d.getMinutes();
+    const startAt = new Date(d);
+    startAt.setHours(Math.floor(start / 60), start % 60, 0, 0);
+    if (start < end) {
+      if (cur < start) return startAt.getTime();          // 时段前：当天开始时间
+      if (cur >= end) return startAt.getTime() + 86400000; // 时段后：次日开始时间
+      return timestamp;                                    // 已在时段内
+    }
+    // 跨天（如20:00~08:00）：只有 end~start 之间需要等待当天start
+    if (cur >= end && cur < start) return startAt.getTime();
+    return timestamp;
+  }
+
+  // 重排唯一唤醒定时器：页面刷新、修改执行时段、回到可见标签页时都重新判断应立刻检查还是睡到时段开始
+  function scheduleTaskWake() {
+    if (__taskPanelTimer) { clearTimeout(__taskPanelTimer); __taskPanelTimer = null; }
+    const now = Date.now();
+    let delay;
+    if (now < __taskPanelReadyAt) {
+      delay = __taskPanelReadyAt - now; // 首次进入页面10秒后再启动
+    } else if (!inTaskTimeWindow()) {
+      delay = Math.max(1000, nextTaskWindowStart(now) - now + 200); // 直接睡到下个开始时间（如次日08:00）
+    } else {
+      // 对齐下一分钟边界，保证任务到点后最多约1分钟内被检查执行
+      const d = new Date(now);
+      delay = 60000 - (d.getSeconds() * 1000 + d.getMilliseconds()) + 100;
+    }
+    __taskPanelTimer = setTimeout(taskSchedulerTick, delay);
+  }
+
+  // 各任务下一次预计执行时间：未开启不显示；已到点显示“即将执行”并在允许时段内立即补执行，不再等下一轮10分钟检查
+  // allowExec=false 时只刷新显示不补执行（切换店铺任务重置其他任务后使用，等页面刷新后自动执行）
+  function updateTaskNextTimes(allowExec) {
+    const canExec = allowExec !== false && Date.now() >= __taskPanelReadyAt; // 页面打开前10秒只显示预计时间，不自动补执行
+    const now = Date.now();
+    [
+      { sw: 'zcc_task_auto_ship', run: 'zcc_task_auto_ship_run', interval: TASK_AUTO_SHIP_INTERVAL, el: 'zcc-task-ship-next', exec: runTaskAutoShip },
+      { sw: 'zcc_task_switch_shop', run: 'zcc_task_switch_shop_run', interval: TASK_SWITCH_SHOP_INTERVAL, el: 'zcc-task-switchShop-next', exec: runTaskSwitchShop },
+      { sw: 'zcc_task_canceled_assoc', run: 'zcc_task_canceled_assoc_run', interval: TASK_CANCELED_INTERVAL, el: 'zcc-task-canceled-next', exec: runTaskCanceledAssoc },
+      { sw: 'zcc_task_express_sync', run: 'zcc_task_express_run', interval: TASK_EXPRESS_INTERVAL, el: 'zcc-task-express-next', exec: runTaskExpressSync }
+    ].forEach(function (t) {
+      getTaskSwitch(t.sw).then(function (on) {
+        const el = document.getElementById(t.el);
+        if (!on) { if (el) el.textContent = ''; return; }
+        getTaskLastRun(t.run).then(function (last) {
+          const rawNext = last + t.interval;
+          if (rawNext <= now && inTaskTimeWindow()) {
+            if (el) { el.textContent = '即将执行'; el.title = '已到达预计执行时间'; }
+            // 到点补执行不依赖面板是否存在；函数内有防重入锁与5分钟冷却，重复调用安全
+            if (canExec) t.exec();
+            return;
+          }
+          // 到点但当前不在时段：顺延到下一个时段开始；未到点但预计时间超出时段：同样顺延，不显示错误的23:08等时间
+          const next = rawNext <= now ? nextTaskWindowStart(now) : nextTaskWindowStart(rawNext);
+          if (el) {
+            const d = new Date(next);
+            const txt = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+            const isOtherDay = d.toDateString() !== new Date(now).toDateString();
+            const show = (isOtherDay ? '明天 ' : '') + txt;
+            el.textContent = '· ' + show; // 周期胶囊后小字显示下次时间，不占额外行
+            el.title = '下次预计执行 ' + show + (rawNext <= now ? '（已到点，等待执行时段）' : '');
+          }
+        });
+      });
+    });
+  }
+
+  // 头部“已取消订单关联单数量”角标：数量>0 时显示并闪烁，为0隐藏
+  function updateTaskBindBadge() {
+    try {
+      chrome.storage.local.get('zcc_task_canceled_assoc_binds', function (st) {
+        const n = (st && st.zcc_task_canceled_assoc_binds) || 0;
+        const el = document.getElementById('zcc-tp-binds');
+        if (!el) return;
+        if (n > 0) {
+          el.style.display = '';
+          el.textContent = '🔗 ' + n;
+          el.classList.add('is-warn');
+          el.title = '已取消订单仍有 ' + n + ' 个采购关联单未处理';
+        } else {
+          el.style.display = 'none';
+          el.classList.remove('is-warn');
+        }
+      });
+    } catch (e) {}
+  }
+  function setTaskBindCount(n) {
+    try { chrome.storage.local.set({ zcc_task_canceled_assoc_binds: n }); } catch (e) {}
+    updateTaskBindBadge();
+  }
+
+  // 任务1小窗：加载已取消列表（shop.jd.com 与当前页同源可直接读DOM，且该域 content script 不注入iframe，互不影响）
+  // 等订单数连续2次稳定视为渲染完成，最多等25秒
+  async function collectCanceledIdsViaFrame() {
+    const visible = await getTaskSwitch('zcc_task_canceled_assoc_view');
+    return new Promise(function (resolve) {
+      const ref = createTaskFrame('zcc-task-canceled-frame', 'https://shop.jd.com/jdm/trade/orders/order-list?tabType=canceled', visible, '已取消订单列表');
+      __taskCanceledFrame = ref;
+      const iframe = ref.iframe;
+      let lastCount = -1, stable = 0, waited = 0;
+      const timer = setInterval(function () {
+        waited += 1000;
+        const ids = [];
+        try {
+          const doc = iframe.contentDocument;
+          if (doc) {
+            doc.querySelectorAll(SELECTORS.orderCard).forEach(function (card) {
+              const el = card.querySelector(SELECTORS.orderId);
+              const oid = el ? el.textContent.trim() : '';
+              if (/^\d{6,}$/.test(oid)) ids.push(oid);
+            });
+          }
+        } catch (e) {}
+        if (ids.length > 0 && ids.length === lastCount) stable++; else stable = 0;
+        lastCount = ids.length;
+        if (stable >= 2 || waited >= 25000) { clearInterval(timer); resolve(ids); }
+      }, 1000);
+    });
+  }
+
+  // 任务0：查单发货，复用原 runBatchShipOnce 核心；manual=true 不再使用设置中的时间范围，固定30分钟由统一调度控制
+  async function runTaskAutoShip() {
+    if (__taskShipRunning) return; // 上一次未结束则跳过本轮
+    __taskShipRunning = true; // 立即上锁，防止调度与补执行并发重入
+    let retryCd = null; // 30秒重试的倒计时句柄，确保结束时一定清理
+    setTaskRunning('ship', true);
+    setTaskStep('ship', 0);
+    try {
+      setTaskLastRun('zcc_task_auto_ship_run'); // 触发即记录本轮时间（失败也顺延，避免到点补执行反复重试）
+      // 查单发货只操作京东页面，未登录智查查也可执行
+      setTaskStatus('ship', '🚚 正在执行批量查单发货...', 'is-checking');
+      let ok = await runBatchShipOnce(true);
+      // 找不到“批量查单发货”按钮说明页面还没渲染好：自动等30秒后重试，仅重试一次（其他失败不重试）
+      if (ok === false && !findBatchShipBtn()) {
+        // 不单纯依赖setTimeout死等（后台标签页会被浏览器节流导致一直卡住）：
+        // 1) MutationObserver监听页面渲染，按钮一出现立即重试；2) 每秒按时间戳刷新倒计时，30秒到点兜底重试
+        const deadline = Date.now() + 30000;
+        setTaskStatus('ship', '页面未就绪，等待渲染后自动重试（剩余 30s）...', 'is-checking');
+        await new Promise(function (resolve) {
+          let done = false;
+          const observer = new MutationObserver(function () { if (findBatchShipBtn()) finish(); });
+          function finish() {
+            if (done) return;
+            done = true;
+            try { observer.disconnect(); } catch (e) {}
+            if (retryCd) { clearInterval(retryCd); retryCd = null; }
+            resolve();
+          }
+          try { observer.observe(document.documentElement || document.body, { childList: true, subtree: true }); } catch (e) {}
+          retryCd = setInterval(function () {
+            const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+            const box = document.getElementById(TASK_STATUS_CONF.ship.el);
+            if (box) box.textContent = '页面未就绪，等待渲染后自动重试（剩余 ' + left + 's）...';
+            if (findBatchShipBtn() || Date.now() >= deadline) finish();
+          }, 1000);
+          if (findBatchShipBtn()) finish();
+        });
+        setTaskStatus('ship', '🚚 正在重试批量查单发货...', 'is-checking');
+        ok = await runBatchShipOnce(true);
+      }
+      const timeText = new Date().toTimeString().slice(0, 5);
+      if (ok === true) setTaskStatus('ship', '✅ 查单发货完成 · ' + timeText, 'is-ok');
+      else if (ok === false) setTaskStatus('ship', '❌ 查单发货失败，等待下轮 · ' + timeText, 'is-error');
+      else setTaskStatus('ship', '本轮未执行（上一次未结束或页面未就绪） · ' + timeText, 'is-error');
+      setTaskStep('ship', 1);
+    } catch (e) {
+      setTaskStatus('ship', '执行异常：' + ((e && e.message) || e), 'is-error');
+    } finally {
+      if (retryCd) { clearInterval(retryCd); retryCd = null; } // 清理重试倒计时，避免泄漏
+      __taskShipRunning = false;
+      setTaskRunning('ship', false);
+      updateTaskNextTimes();
+    }
+  }
+
+  // 切换店铺任务执行时调用：重置 查单发货/已取消关联单数量/同步物流状态 的上次执行时间（置0）与状态
+  // 页面切换刷新后，新页面的到点补执行机制会让它们自动重新执行，无需在本页手动触发
+  function resetOtherTaskTimers() {
+    try {
+      chrome.storage.local.set({
+        zcc_task_auto_ship_run: 0,
+        zcc_task_canceled_assoc_run: 0,
+        zcc_task_express_run: 0
+      });
+    } catch (e) {}
+    ['ship', 'canceled', 'express'].forEach(function (kind) {
+      setTaskStatus(kind, '计时已重置，待切换店铺后自动执行', '');
+    });
+  }
+
+  // 任务：自动切换店铺，复用原 manualRunSwitchOnce 轮转流程（force=true 跳过旧设置开关校验）
+  async function runTaskSwitchShop() {
+    if (__taskSwitchRunning) return; // 上一次未结束则跳过本轮
+    __taskSwitchRunning = true; // 立即上锁，防止调度与补执行并发重入
+    setTaskRunning('switchShop', true);
+    setTaskStep('switchShop', 0);
+    try {
+      setTaskLastRun('zcc_task_switch_shop_run'); // 触发即记录本轮时间（失败也顺延）
+      if (!(await zccHasToken())) { setTaskStatus('switchShop', '未登录智查查，无法执行', 'is-error'); return; }
+      const queue = await getSwitchShopQueue();
+      if (queue.length < 2) { setTaskStatus('switchShop', '绑定店铺不足2个，无法切换', 'is-error'); return; }
+      // 重置其他任务计时移到 performSwitchToShop 真正开始切换时执行，避免倒计时等待期间被误触发
+      setTaskStatus('switchShop', '', ''); // 刷新即结束，不留状态文字
+      await manualRunSwitchOnce(true);
+    } catch (e) {
+      setTaskStatus('switchShop', '执行异常：' + ((e && e.message) || e), 'is-error');
+    } finally {
+      __taskSwitchRunning = false;
+      setTaskRunning('switchShop', false);
+      updateTaskNextTimes(false); // 只刷新显示，不在本页补执行其他任务（等切换刷新后自动执行）
+    }
+  }
+
+  async function runTaskCanceledAssoc() {
+    if (__taskCanceledRunning) return; // 上一次未结束则跳过本轮
+    __taskCanceledRunning = true; // 立即上锁，防止调度与补执行并发重入
+    setTaskRunning('canceled', true);
+    setTaskStep('canceled', 0);
+    try {
+      setTaskLastRun('zcc_task_canceled_assoc_run'); // 触发即记录本轮时间（失败也顺延，避免到点补执行反复重试）
+      if (!(await zccHasToken())) { setTaskStatus('canceled', '未登录智查查，无法执行', 'is-error'); return; }
+      setTaskStatus('canceled', '正在通过小窗加载已取消订单页...', 'is-checking');
+      const ids = await collectCanceledIdsViaFrame();
+      if (!ids.length) { setTaskStatus('canceled', '未读取到已取消订单（小窗加载超时或无订单）', 'is-error'); return; }
+      setTaskStep('canceled', 1);
+      let foundOrders = 0, foundBinds = 0;
+      const BATCH = 50; // 与已取消检测同一口径：主行 + extra.buy 附加采购单
+      for (let i = 0; i < ids.length; i += BATCH) {
+        setTaskStatus('canceled', '接口直查进度 ' + i + '/' + ids.length + '，已发现 ' + foundOrders + ' 个仍关联订单', 'is-checking');
+        const resp = await new Promise(function (resolve) {
+          try { chrome.runtime.sendMessage({ type: 'ZCC_AFS_BIND_QUERY', orderIds: ids.slice(i, i + BATCH) }, resolve); }
+          catch (e) { resolve(null); }
+        });
+        if (resp && resp.notLogin) { setTaskStatus('canceled', '京巴士未登录，无法查询，请先登录京巴士', 'is-error'); return; }
+        if (!resp || !resp.ok) { setTaskStatus('canceled', '查询失败：' + ((resp && resp.error) || '接口异常'), 'is-error'); return; }
+        const rows = (resp.data && resp.data.rows) || [];
+        rows.forEach(function (row) {
+          const oid = String(row.order_id || '').trim();
+          if (!oid) return;
+          const extra = row.extra && Array.isArray(row.extra.buy) ? row.extra.buy.length : 0;
+          foundOrders++;
+          foundBinds += 1 + extra;
+        });
+      }
+      const timeText = new Date().toTimeString().slice(0, 5);
+      setTaskStatus('canceled', ids.length + ' 个已取消订单：' +
+        (foundOrders ? '⚠️ ' + foundOrders + ' 个订单仍关联（共 ' + foundBinds + ' 个关联单）' : '✅ 无未取消关联单') +
+        ' · ' + timeText, foundOrders ? 'is-warn' : 'is-ok');
+      setTaskBindCount(foundBinds); // 头部角标：有未处理关联单则闪烁提醒
+      setTaskStep('canceled', 2);
+      console.log('[定时任务] 已取消关联单统计：共 ' + ids.length + ' 单，仍关联 ' + foundOrders + ' 单（' + foundBinds + ' 个关联单）');
+    } catch (e) {
+      setTaskStatus('canceled', '执行异常：' + ((e && e.message) || e), 'is-error');
+    } finally {
+      __taskCanceledRunning = false;
+      setTaskRunning('canceled', false);
+      destroyTaskFrame(__taskCanceledFrame); // 任务结束自动关闭小窗
+      __taskCanceledFrame = null;
+      updateTaskNextTimes();
+    }
+  }
+
+  // 任务2：载入京巴士物流状态页（与京东页跨域，按钮由小窗内 content.js 识别 zcc_auto_sync=1 后5秒自动点击）
+  async function runTaskExpressSync() {
+    if (__taskExpressRunning) return; // 上一次未结束则跳过本轮
+    __taskExpressRunning = true; // 立即上锁，防止调度与补执行并发重入
+    setTaskRunning('express', true);
+    setTaskStep('express', 0);
+    try {
+      const last = await getTaskLastRun('zcc_task_express_run');
+      const remainMs = TASK_EXPRESS_LOCK - (Date.now() - last);
+      if (remainMs > 0) { // 5分钟执行窗口内不允许重复执行
+        setTaskStatus('express', '同步执行中，约 ' + Math.ceil(remainMs / 60000) + ' 分钟后可再次执行', 'is-checking');
+        return;
+      }
+      setTaskLastRun('zcc_task_express_run'); // 触发即记录本轮时间（失败也顺延，避免到点补执行反复重试）
+      if (!(await zccHasToken())) { setTaskStatus('express', '未登录智查查，无法执行', 'is-error'); return; }
+      const visible = await getTaskSwitch('zcc_task_express_view');
+      setTaskStatus('express', '正在通过小窗载入京巴士物流状态页...', 'is-checking');
+      __taskExpressFrame = createTaskFrame('zcc-task-express-frame', 'https://pay.jingbashi.com/back.php/order/status?addtabs=1&zcc_auto_sync=1', visible, '京巴士 · 同步物流状态');
+      setTaskStep('express', 1);
+      setTaskStatus('express', '已载入，5秒后自动点击「同步物流状态(并发送取件码)」，本轮约需5分钟', 'is-checking');
+      // 等待执行窗口期间每秒检查小窗：用户主动关闭小窗即视为本轮任务结束，不再继续等待
+      const waitStart = Date.now();
+      let frameClosed = false;
+      while (Date.now() - waitStart < TASK_EXPRESS_LOCK) {
+        const ref = __taskExpressFrame;
+        if (!ref || !ref.wrap || !ref.wrap.isConnected) { frameClosed = true; break; }
+        await zccSleep(1000);
+      }
+      const timeText = new Date().toTimeString().slice(0, 5);
+      if (frameClosed) {
+        setTaskStatus('express', '小窗已关闭，本轮任务结束 · ' + timeText, 'is-ok');
+        console.log('[定时任务] 同步物流状态小窗被关闭，本轮任务直接结束');
+      } else {
+        setTaskStep('express', 2);
+        setTaskStatus('express', '本轮同步已触发 · ' + timeText, 'is-ok');
+        console.log('[定时任务] 同步物流状态(并发送取件码) 本轮已触发');
+      }
+    } catch (e) {
+      setTaskStatus('express', '执行异常：' + ((e && e.message) || e), 'is-error');
+    } finally {
+      __taskExpressRunning = false;
+      setTaskRunning('express', false);
+      destroyTaskFrame(__taskExpressFrame); // 任务结束自动关闭小窗
+      __taskExpressFrame = null;
+      updateTaskNextTimes();
+    }
   }
 
   // 定时查单发货独立状态
@@ -2055,12 +2650,9 @@
   }
 
   // ==================== 定时批量查单发货 ====================
+  // 旧定时调度（autoShip/执行间隔/执行时段/自动同步物流）已随设置项一并移除，定时任务列表独立调度
 
-  let autoShipTimer = null;       // setInterval 句柄
-  let autoShipFirstTimer = null;  // 首次执行 setTimeout 句柄
   let isAutoShipping = false;     // 防止并发执行
-  let expressTimer = null;
-  let expressFirstTimer = null;
   let isSyncingExpress = false;
   let expressFrameReady = false; // 当前frame是否包含京巴士同步按钮（多frame环境下只在正确的frame运行）
 
@@ -2153,28 +2745,6 @@
   }
 
   /**
-   * 判断当前时间是否在允许执行的时间段内
-   * 支持跨天（如 22:00 ~ 07:00）
-   */
-  function isInShipTimeRange(settings) {
-    if (!settings.autoShipTimeRange) return true;
-    const toMin = (t) => {
-      const [h, m] = (t || '0:0').split(':').map(Number);
-      return h * 60 + (m || 0);
-    };
-    const now = new Date();
-    const cur = now.getHours() * 60 + now.getMinutes();
-    const start = toMin(settings.autoShipTimeStart);
-    const end = toMin(settings.autoShipTimeEnd);
-    if (start === end) return true;
-    if (start < end) {
-      return cur >= start && cur < end;
-    }
-    // 跨天：如 22:00 ~ 07:00
-    return cur >= start || cur < end;
-  }
-
-  /**
    * 检查插件上下文是否有效（插件刷新/更新后旧content script会失效）
    */
   function checkExtensionContext() {
@@ -2195,17 +2765,7 @@
       return;
     }
 
-    // 时间范围判断（手动触发不受限制）
-    const settings = await new Promise(r => chrome.storage.local.get('jd_settings', s => r(s.jd_settings || {})));
-    if (!(await zccHasToken())) {
-      console.log('[定时发货] 未登录或账号已停用，跳过执行');
-      if (manual) updateShipStatus('⚠️ 未登录或账号已停用，功能不可用', 'error');
-      return;
-    }
-    if (!manual && !isInShipTimeRange(settings)) {
-      console.log(`[定时发货] 当前时间不在 ${settings.autoShipTimeStart}~${settings.autoShipTimeEnd} 范围内，跳过`);
-      return;
-    }
+    // 查单发货只操作京东页面，未登录智查查也可执行；执行时段由定时任务列表统一控制，不再读取旧设置
 
     isAutoShipping = true;
     try {
@@ -2317,142 +2877,10 @@
     }
   }
 
-  /**
-   * 计算距离下次执行的毫秒数
-   * 综合考虑时间范围和执行间隔
-   */
-  function calcNextDelay(lastTime, settings, intervalMs) {
-    const now = Date.now();
-    const last = lastTime || 0;
-    const elapsed = now - last;
-
-    // 间隔剩余时间
-    let intervalWait = (!last || elapsed >= intervalMs) ? 10000 : (intervalMs - elapsed);
-
-    // 没有时间范围限制，直接按间隔
-    if (!settings.autoShipTimeRange) return intervalWait;
-
-    const toMin = (t) => {
-      const [h, m] = (t || '0:0').split(':').map(Number);
-      return h * 60 + (m || 0);
-    };
-    const nowDate = new Date();
-    const cur = nowDate.getHours() * 60 + nowDate.getMinutes();
-    const start = toMin(settings.autoShipTimeStart);
-    const end = toMin(settings.autoShipTimeEnd);
-    const DAY = 24 * 60;
-
-    // 判断某分钟数是否在时段内
-    const inRange = (mins) => {
-      if (start < end) return mins >= start && mins < end;
-      if (start > end) return mins >= start || mins < end;
-      return true;
-    };
-
-    // 计算到下一个时段开始的毫秒数
-    const msToNextStart = () => {
-      if (start < end) {
-        if (cur < start) return (start - cur) * 60000;
-        return (DAY - cur + start) * 60000;
-      } else if (start > end) {
-        if (cur >= end && cur < start) return (start - cur) * 60000;
-        return 0; // 已在时段内（跨天段）
-      }
-      return 0;
-    };
-
-    // 当前不在时段内，等到时段开始
-    if (!inRange(cur)) return msToNextStart();
-
-    // 当前在时段内，检查按间隔算出的时间是否还在时段内
-    const nextMins = cur + Math.round(intervalWait / 60000);
-    if (!inRange(nextMins % DAY)) {
-      // 超出时段，排到下一个时段开始
-      return msToNextStart();
-    }
-
-    return intervalWait;
-  }
-
-  /**
-   * 递归调度下一次执行（统一走 setupAutoShipTimer，避免定时器冲突）
-   */
-  function scheduleNext() {
-    setupAutoShipTimer();
-  }
-
-  /**
-   * 启动/重启定时查单发货
-   */
-  function setupAutoShipTimer() {
-    if (!isTargetPage()) return;
-    if (autoShipTimer) {
-      clearTimeout(autoShipTimer);
-      autoShipTimer = null;
-    }
-    if (autoShipFirstTimer) {
-      clearTimeout(autoShipFirstTimer);
-      autoShipFirstTimer = null;
-    }
-
-    chrome.storage.local.get('jd_settings', async (result) => {
-      const settings = result.jd_settings || {};
-      if (!(await zccHasToken())) {
-        console.log('[定时发货] 未登录或账号已停用，定时发货/自动切换店铺不启动');
-        updateShipStatus('⚠️ 未登录或账号已停用，自动化功能不可用', 'error');
-        return;
-      }
-      if (!settings.autoShip) {
-        console.log('[定时发货] 未开启');
-        updateShipStatus('🚚 定时查单发货未开启', 'info');
-        return;
-      }
-      // 开启了"自动切换店铺"：绑定店铺≥2个才走轮转调度，否则回退普通定时发货
-      if (settings.autoSwitchShop) {
-        const queue = await getSwitchShopQueue();
-        if (queue.length >= 2) {
-          console.log('%c[定时发货] 已启用自动切换店铺模式，进入店铺轮转调度', 'color:#409eff;font-weight:bold;');
-          setupShopSwitchTimer();
-          return;
-        }
-        console.log('[定时发货] 自动切换店铺已开启但绑定店铺不足2个，回退普通定时发货');
-      }
-      startNormalShipTimer(settings);
-    });
-  }
-
-  /**
-   * 普通（单店）定时查单发货调度
-   */
-  function startNormalShipTimer(settings) {
-      const minutes = Math.max(1, Math.min(720, settings.autoShipInterval || 30));
-      const intervalMs = minutes * 60 * 1000;
-      const delay = calcNextDelay(settings.lastShipTime, settings, intervalMs);
-
-      const nextTime = new Date(Date.now() + delay);
-      const nextStr = `${String(nextTime.getHours()).padStart(2,'0')}:${String(nextTime.getMinutes()).padStart(2,'0')}`;
-      const rangeText = settings.autoShipTimeRange
-        ? `，时段 ${settings.autoShipTimeStart}~${settings.autoShipTimeEnd}`
-        : '';
-      console.log(`%c[定时发货] 已开启，每${minutes}分钟执行${rangeText}，下次执行：${nextStr}`, 'color:#67c23a;font-weight:bold;');
-      updateShipStatus(`🚚 每${minutes}分钟，下次 ${nextStr}${rangeText}`, 'info');
-
-      autoShipFirstTimer = setTimeout(async () => {
-        try {
-          await runBatchShipOnce();
-        } catch (err) {
-          console.error("[定时发货] 本次执行异常，已自动安排下一次:", err);
-          try { updateShipStatus("⚠️ 本次执行异常，已自动排程下次", "error"); } catch (e2) {}
-        } finally {
-          scheduleNext(); // 无论成功失败都继续下一轮，防止调度链中断
-        }
-      }, delay);
-  }
-
   // ==================== 自动切换店铺批量查单发货 ====================
   // 设计说明：切换店铺会导致页面刷新，内存状态全部丢失，
   // 因此调度进度统一持久化到 chrome.storage.local 的 shop_switch_state，
-  // 页面刷新后由 setupShopSwitchTimer 检测 phase='switching' 并恢复执行。
+  // 页面刷新后由定时任务面板检测 phase='switching' 并恢复执行。
 
   const SHOP_SWITCH_STATE_KEY = 'shop_switch_state';
   let shopSwitchTimer = null;       // 切换调度 setTimeout 句柄
@@ -2620,6 +3048,8 @@
    * 执行 DOM 层面的店铺切换（点击后页面预期会刷新）
    */
   async function performSwitchToShop(shop) {
+    // 真正开始切换店铺时才重置其他任务计时与状态（不要在30秒倒计时等待时提前重置，避免等待期间被误触发）
+    resetOtherTaskTimers();
     // 1. 点击店铺列表展示按钮 .j_showShopsLogo
     const logo = document.querySelector('.j_showShopsLogo');
     if (!logo) throw new Error('未找到店铺列表展示按钮（.j_showShopsLogo），请确认在订单列表页');
@@ -2693,9 +3123,11 @@
       const nameOk = shop.shopName && info.shopName &&
         String(info.shopName).trim() === String(shop.shopName).trim();
       if (idOk || nameOk) {
-        console.log('%c[切换店铺] 当前页检测到已切换到目标店铺（局部切换），交由恢复流程统一硬刷后发货', 'color:#67c23a;font-weight:bold;');
-        isSwitchingShop = false; // 解除 doSwitch 加的锁，让 resumeAfterSwitch 进入
-        resumeAfterSwitch(s);
+        console.log('%c[切换店铺] 当前页检测到已切换到目标店铺（局部切换），主动刷新页面后由恢复流程统一发货', 'color:#67c23a;font-weight:bold;');
+        updateShipStatus(`🔁 已切换到【${shop.shopName}】，正在刷新页面...`, 'info');
+        // 局部切换不会整页刷新：主动reload一次，保持 phase='switching'，由新页面 init 的 resumeAfterSwitch 接管
+        // 注意：整页刷新路径不在这里，reload只发生这一次，不会循环刷新
+        setTimeout(function () { location.reload(); }, 800);
         return;
       }
       if (Date.now() - start > timeout) {
@@ -2756,7 +3188,6 @@
     state.shopNextAt = estimateShopNextAt(queue, state.index, nextBase);
     await saveShopSwitchState(state);
     renderSwitchPlan(queue, state);
-    setupShopSwitchTimer();
   }
 
   /**
@@ -2768,17 +3199,10 @@
     const shop = queue[state.index];
     if (!shop) { // 队列异常，重置
       await removeShopSwitchState();
-      setupShopSwitchTimer();
       return;
     }
 
-    // 自动调度受时间范围限制（手动/恢复流程不走这里）
-    if (!manual && !isInShipTimeRange(settings)) {
-      console.log(`[切换店铺] 当前不在 ${settings.autoShipTimeStart}~${settings.autoShipTimeEnd} 时段，本次跳过`);
-      updateShipStatus(`🔁 非执行时段，跳过【${shop.shopName}】`, 'info');
-      await advanceAfterShop(queue, state, '非执行时段');
-      return;
-    }
+    // 执行时段由定时任务面板统一控制，此处不再读取旧设置判断
 
     // 判断当前是否已处于目标店铺（无需切换）
     const cur = await getShopInfo();
@@ -2806,7 +3230,7 @@
         await performSwitchToShop(shop);
         // 点击后分两种情况：
         // 1) 页面整页刷新 → 本上下文销毁，由新页面 init 检测 switching 走 resumeAfterSwitch；
-        // 2) 页面不刷新（局部切换）→ 由 watchSwitchOnSamePage 持续轮询，店铺一切换到位就立即发货。
+        // 2) 页面不刷新（局部切换）→ 由 watchSwitchOnSamePage 持续轮询，店铺一切换到位就主动reload，再由新页面恢复发货。
         watchSwitchOnSamePage(shop, queue, state);
       } catch (e) {
         console.error('[切换店铺] 切换操作失败:', e);
@@ -2839,13 +3263,16 @@
     isSwitchingShop = true;
     try {
       updateShipStatus(`🚚 正在为【${shop.shopName}】批量查单发货...`, 'info');
+      setTaskStatus('ship', `🚚 正在为【${shop.shopName}】批量查单发货...`, 'is-checking');
       console.log(`%c[切换店铺] 开始为【${shop.shopName}】执行批量查单发货`, 'color:#409eff;font-weight:bold;');
       // 复用既有发货流程：manual=true 跳过时段判断；切换模式不依赖 lastShipTime
       const ok = await runBatchShipOnce(true);
       console.log(`%c[切换店铺]【${shop.shopName}】查单发货结束，结果：${ok ? '成功' : '存在失败'}`, ok ? 'color:#67c23a;' : 'color:#e6a23c;');
+      setTaskStatus('ship', (ok ? '✅' : '⚠️') + `【${shop.shopName}】查单发货${ok ? '完成' : '存在失败'} · ` + new Date().toTimeString().slice(0, 5), ok ? 'is-ok' : 'is-error');
     } catch (e) {
       console.error(`[切换店铺]【${shop.shopName}】发货异常:`, e);
       updateShipStatus(`❌【${shop.shopName}】发货异常：${e.message}`, 'error');
+      setTaskStatus('ship', `❌【${shop.shopName}】发货异常：${e.message}`, 'is-error');
     } finally {
       isSwitchingShop = false;
       await advanceAfterShop(queue, state, '发货结束');
@@ -2888,6 +3315,7 @@
     try {
       console.log(`%c[切换店铺] 页面已刷新，等待切换到目标店铺【${shop.shopName}】...`, 'color:#e6a23c;font-weight:bold;');
       updateShipStatus(`🔁 正在切换到【${shop.shopName}】，等待页面加载...`, 'info');
+      setTaskStatus('switchShop', `正在确认目标店铺【${shop.shopName}】...`, 'is-checking');
       renderSwitchPlan(queue.length ? queue : [shop], state);
 
       // 等待当前店铺变为目标店铺
@@ -2895,6 +3323,7 @@
 
       console.log(`%c[切换店铺] 已成功切换到【${shop.shopName}】，等待订单页就绪后发货`, 'color:#67c23a;');
       updateShipStatus(`⏳ 已切换到【${shop.shopName}】，等待订单页加载完成...`, 'info');
+      setTaskStatus('switchShop', `已切换到【${shop.shopName}】，等待订单页就绪...`, 'is-checking');
       // 轮询等待“批量查单发货”按钮真正渲染出来（最多30秒），避免页面未就绪就发货
       const shipBtnReady = await waitForBatchShipBtn(30000);
       if (!shipBtnReady) {
@@ -2907,9 +3336,15 @@
       const useQueue = queue.length ? queue : [shop];
       const useState = queue.length ? state : Object.assign({}, state, { index: 0 });
       await shipForShopAndAdvance(useQueue, useState, shop);
+      // 恢复流程结束：切换任务刷新即结束，不保留“正在切换”类文字；发货结果在查单发货任务状态中查看
+      setTaskRunning('switchShop', false);
+      setTaskStatus('switchShop', '', '');
+      updateTaskNextTimes();
     } catch (e) {
       console.error('[切换店铺] 恢复切换流程失败:', e);
       updateShipStatus(`❌ ${e.message}`, 'error');
+      setTaskStatus('switchShop', '恢复失败：' + ((e && e.message) || e), 'is-error');
+      setTaskRunning('switchShop', false);
       isSwitchingShop = false;
       // 容错：切换恢复失败也推进到下一店，避免卡死整个轮转
       if (queue.length) {
@@ -2918,31 +3353,26 @@
         state.phase = 'idle';
         state.targetShopId = '';
         await saveShopSwitchState(state);
-        setupShopSwitchTimer();
       }
     }
   }
 
   /**
    * 手动立即执行一次"切换店铺批量查单发货"（面板按钮触发，不受时段限制）
+   * force=true 供定时任务调用：跳过旧设置中"定时查单发货/自动切换店铺"开关校验
    */
-  async function manualRunSwitchOnce() {
+  async function manualRunSwitchOnce(force) {
     if (!checkExtensionContext()) return;
     if (isSwitchingShop) {
       updateShipStatus('🔁 店铺切换正在执行中，请勿重复触发', 'info');
       console.log('[切换店铺] 手动触发被拦截：上一次切换尚未结束');
       return;
     }
-    const settings = await new Promise(r => chrome.storage.local.get('jd_settings', s => r(s.jd_settings || {})));
     if (!(await zccHasToken())) {
       updateShipStatus('⚠️ 未登录或账号已停用，自动切换店铺不可用', 'error');
       return;
     }
-    if (!settings.autoShip || !settings.autoSwitchShop) {
-      updateShipStatus('🔁 请先在插件设置中开启"定时查单发货"和"自动切换店铺"', 'error');
-      console.warn('[切换店铺] 手动触发失败：未开启自动切换店铺');
-      return;
-    }
+    // 旧设置开关（定时查单发货/自动切换店铺）已移除，切换任务由定时任务面板触发
     const queue = await getSwitchShopQueue();
     if (queue.length < 2) {
       updateShipStatus('🔁 绑定店铺不足2个，无法切换，可直接用标题栏🚚发货', 'error');
@@ -2954,7 +3384,7 @@
     if (shopSwitchTimer) { clearTimeout(shopSwitchTimer); shopSwitchTimer = null; }
     removeSwitchCountdown();
 
-    const minutes = Math.max(1, Math.min(720, settings.autoShipInterval || 30));
+    const minutes = 70; // 固定每1小时10分，与定时任务面板 TASK_SWITCH_SHOP_INTERVAL 一致
     let state = await getShopSwitchState();
     if (!state || !Array.isArray(state.queueIds) ||
       state.queueIds.join(',') !== queue.map(q => q.shopId).join(',')) {
@@ -2976,106 +3406,14 @@
     state.intervalMin = minutes;
     state.baseAt = Date.now(); // 手动立即开始，基准重置为当前
     state.nextAt = Date.now();
-    state.shopNextAt = estimateShopNextAt(queue, state.index, Date.now(), settings);
+    state.shopNextAt = estimateShopNextAt(queue, state.index, Date.now());
     await saveShopSwitchState(state);
     renderSwitchPlan(queue, state);
 
     const shop = queue[state.index];
     console.log('%c[切换店铺] 手动触发：立即开始切换店铺发货，首个目标【' + (shop ? shop.shopName : '-') + '】', 'color:#f56c6c;font-weight:bold;');
     updateShipStatus(`🔁 手动触发，立即切换到【${shop ? shop.shopName : '-'}】`, 'info');
-    await beginCurrentShop(queue, state, settings, true);
-  }
-
-  /**
-   * 自动切换店铺调度器（切换模式下替代 setupAutoShipTimer 的普通调度）
-   */
-  async function setupShopSwitchTimer() {
-    if (!isTargetPage()) return;
-    if (shopSwitchTimer) { clearTimeout(shopSwitchTimer); shopSwitchTimer = null; }
-
-    let settings;
-    try {
-      settings = await new Promise(r => chrome.storage.local.get('jd_settings', s => r(s.jd_settings || {})));
-    } catch (e) { return; }
-
-    // 未开启切换店铺：清理切换状态，交还给普通定时发货逻辑
-    if (!settings.autoShip || !settings.autoSwitchShop) {
-      const st = await getShopSwitchState();
-      if (st && st.phase !== 'switching') await removeShopSwitchState();
-      const planBox = document.getElementById('shop-switch-plan');
-      if (planBox) planBox.style.display = 'none';
-      return;
-    }
-
-    const state0 = await getShopSwitchState();
-    // 恢复分支：页面刷新后处于 switching
-    if (state0 && state0.phase === 'switching' && state0.targetShopId) {
-      console.log('%c[切换店铺] 检测到切换中状态（页面刚刷新），恢复执行', 'color:#e6a23c;font-weight:bold;');
-      resumeAfterSwitch(state0);
-      return;
-    }
-
-    const queue = await getSwitchShopQueue();
-    if (queue.length === 0) {
-      updateShipStatus('🔁 未获取到绑定店铺，无法自动切换', 'error');
-      return;
-    }
-    // 只有1个店铺时无需切换，直接走普通定时发货
-    if (queue.length === 1) {
-      console.log('[切换店铺] 仅1个绑定店铺，按普通定时发货处理');
-      const planBoxOne = document.getElementById('shop-switch-plan');
-      if (planBoxOne) planBoxOne.style.display = 'none';
-      return;
-    }
-
-    const minutes = Math.max(1, Math.min(720, settings.autoShipInterval || 30));
-    let state = state0;
-    if (!state || !Array.isArray(state.queueIds) ||
-      state.queueIds.join(',') !== queue.map(q => q.shopId).join(',')) {
-      // 首次运行或店铺队列发生变化：重新初始化
-      state = {
-        phase: 'idle',
-        queueIds: queue.map(q => q.shopId),
-        index: 0,
-        intervalMin: minutes,
-        baseAt: Date.now() + 2000, // 首店倒计时开始时刻（与 nextAt 一致）
-        nextAt: Date.now() + 2000, // 首次/重置后2秒即开始（尽快执行一遍）
-        targetShopId: '',
-        targetShopName: '',
-        shopNextAt: {}
-      };
-      console.log('%c[切换店铺] 初始化轮转队列：', 'color:#409eff;font-weight:bold;', queue.map(q => q.shopName));
-    }
-    state.intervalMin = minutes;
-
-    // 估算并渲染各店计划时间（以当前店倒计时开始时刻 baseAt 为基准，含2分钟保底）
-    state.baseAt = state.baseAt || state.nextAt;
-    state.shopNextAt = estimateShopNextAt(queue, state.index, state.baseAt, settings);
-    await saveShopSwitchState(state);
-    renderSwitchPlan(queue, state);
-
-    const intervalMs = minutes * 60 * 1000;
-    // 计算等待时长（叠加时间范围）
-    let delay = Math.max(2000, (state.nextAt || 0) - Date.now());
-    if (settings.autoShipTimeRange) {
-      const rangeDelay = calcNextDelay(null, settings, intervalMs);
-      // 非执行时段时，优先等到时段开始
-      if (!isInShipTimeRange(settings)) delay = rangeDelay;
-    }
-
-    const nextShop = queue[state.index];
-    console.log(`%c[切换店铺] 调度已规划：共${queue.length}个店，下一个【${nextShop ? nextShop.shopName : '-'}】，约${Math.round(delay / 1000)}秒后进入${switchCfg('shopSwitchCountdown', 30)}秒倒计时`, 'color:#409eff;');
-    console.log('%c[切换店铺] 各店预计时间:', 'color:#409eff;',
-      queue.map((q, i) => `${q.shopName}@${fmtSwitchTime(state.shopNextAt[q.shopId])}`).join('  |  '));
-    updateShipStatus(`🔁 轮转${queue.length}店，下一个【${nextShop ? nextShop.shopName : '-'}】约${fmtSwitchTime(Date.now() + delay)}`, 'info');
-
-    shopSwitchTimer = setTimeout(async () => {
-      // 到点前再次读取最新设置，避免使用过期状态
-      const latest = await new Promise(r => chrome.storage.local.get('jd_settings', s => r(s.jd_settings || {})));
-      const curState = await getShopSwitchState();
-      if (!latest.autoShip || !latest.autoSwitchShop || !curState) return;
-      await beginCurrentShop(queue, curState, latest);
-    }, delay);
+    await beginCurrentShop(queue, state, {}, true);
   }
 
   // ==================== 同步物流状态（京巴士） ====================
@@ -3165,13 +3503,7 @@
       return;
     }
 
-    // 时间范围判断（手动触发不受限制）
-    const settings = await new Promise(r => chrome.storage.local.get('jd_settings', s => r(s.jd_settings || {})));
-    if (!manual && !isInShipTimeRange(settings)) {
-      console.log(`[同步物流] 当前时间不在 ${settings.autoShipTimeStart}~${settings.autoShipTimeEnd} 范围内，跳过`);
-      return;
-    }
-
+    // 执行时段由定时任务面板统一控制，此处不再读取旧设置判断
     isSyncingExpress = true;
     try {
       console.log('%c[同步物流] 开始执行', 'color:#e6a23c;font-weight:bold;');
@@ -3248,7 +3580,7 @@
       const timeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
       updateExpressStatus(`✅ 同步物流完成（${timeStr}）`, 'success');
 
-      // 记录本次执行时间（await确保scheduleExpressNext读到新值）
+      // 记录本次执行时间（保留历史运行时间戳，旧调度已移除）
       await new Promise(resolve => {
         chrome.storage.local.get('jd_settings', (result) => {
           const s = result.jd_settings || {};
@@ -3278,53 +3610,6 @@
     } finally {
       isSyncingExpress = false;
     }
-  }
-
-  /**
-   * 递归调度下一次同步物流（统一走 setupExpressTimer，避免定时器冲突）
-   */
-  function scheduleExpressNext() {
-    setupExpressTimer();
-  }
-
-  /**
-   * 启动/重启定时同步物流
-   */
-  function setupExpressTimer() {
-    if (!isExpressPage() || !expressFrameReady) return;
-    if (expressTimer) {
-      clearTimeout(expressTimer);
-      expressTimer = null;
-    }
-    if (expressFirstTimer) {
-      clearTimeout(expressFirstTimer);
-      expressFirstTimer = null;
-    }
-
-    chrome.storage.local.get('jd_settings', (result) => {
-      const settings = result.jd_settings || {};
-      if (!settings.autoSyncExpress) {
-        console.log('[同步物流] 未开启');
-        updateExpressStatus('📮 定时同步物流未开启', 'info');
-        return;
-      }
-      const minutes = Math.max(1, Math.min(1440, settings.autoSyncExpressInterval || 120));
-      const intervalMs = minutes * 60 * 1000;
-      const delay = calcNextDelay(settings.lastExpressTime, settings, intervalMs);
-
-      const nextTime = new Date(Date.now() + delay);
-      const nextStr = `${String(nextTime.getHours()).padStart(2,'0')}:${String(nextTime.getMinutes()).padStart(2,'0')}`;
-      const rangeText = settings.autoShipTimeRange
-        ? `，时段 ${settings.autoShipTimeStart}~${settings.autoShipTimeEnd}`
-        : '';
-      console.log(`%c[同步物流] 已开启，每${minutes}分钟执行${rangeText}，下次：${nextStr}`, 'color:#e6a23c;font-weight:bold;');
-      updateExpressStatus(`📮 每${minutes}分钟，下次 ${nextStr}${rangeText}`, 'info');
-
-      expressFirstTimer = setTimeout(async () => {
-        await runSyncExpressOnce();
-        scheduleExpressNext();
-      }, delay);
-    });
   }
 
   // ==================== 消息监听 ====================
@@ -3394,18 +3679,7 @@
         return true;
 
       case 'SETTINGS_UPDATED': {
-        // 设置已更新，重新设置定时器；切换店铺模式下重置轮转
-        const ns = message.settings || {};
-        if (isTargetPage() && ns.autoShip && ns.autoSwitchShop && !isSwitchingShop) {
-          if (shopSwitchTimer) { clearTimeout(shopSwitchTimer); shopSwitchTimer = null; }
-          removeSwitchCountdown();
-          chrome.storage.local.remove(SHOP_SWITCH_STATE_KEY, () => {
-            setupAutoShipTimer();
-          });
-        } else {
-          setupAutoShipTimer();
-        }
-        if (isExpressPage()) setupExpressTimer();
+        // 旧定时调度已移除，设置保存不再重启任何定时器；定时任务面板独立调度
         break;
       }
     }
@@ -3420,11 +3694,11 @@
         clearRiskMarks();
         console.log('[风险检测] 已退出登录，清除页面风险标记');
       }
-    }
-    // 设置变化时重新设置定时器
-    if (area === 'local' && changes.jd_settings) {
-      setupAutoShipTimer();
-      if (isExpressPage()) setupExpressTimer();
+      // 登录/退出登录后重建定时任务面板：刷新各任务开关与顶部图标的禁用状态，避免仍按旧登录态显示
+      if (isTargetPage() && document.getElementById('zcc-task-panel')) {
+        removeTaskPanel();
+        setupTaskPanel();
+      }
     }
   });
 
@@ -3546,6 +3820,42 @@
         });
       }
 
+      // 定时任务小窗模式：由待出库定时任务面板载入，独立轮询按钮（最多40秒），找到后5秒自动点击“同步物流状态(并发送取件码)”，不加载浮动面板与既有定时器
+      if (/[?&]zcc_auto_sync=1/.test(window.location.href)) {
+        let waited = 0;
+        const findTimer = setInterval(function () {
+          waited += 1000;
+          const syncBtn = document.querySelector('a.sendExpressPrivacy');
+          if (syncBtn) {
+            clearInterval(findTimer);
+            setTimeout(function () {
+              try {
+                syncBtn.click();
+                console.log('[定时任务] 已自动点击同步物流状态(并发送取件码)');
+                // 点击后约3秒弹出 zeromodal 同步弹窗，需再点“开始发送”才真正执行；轮询等待弹窗按钮（最多15秒）
+                let modalWaited = 0;
+                const modalTimer = setInterval(function () {
+                  modalWaited += 1000;
+                  const startBtn = document.querySelector('.jbs-send-express-modal .zeromodal-btn-primary');
+                  if (startBtn) {
+                    clearInterval(modalTimer);
+                    startBtn.click();
+                    console.log('[定时任务] 已自动点击弹窗“开始发送”，同步开始执行');
+                  } else if (modalWaited >= 15000) {
+                    clearInterval(modalTimer);
+                    console.log('[定时任务] 15秒内未出现同步弹窗，未点击开始发送');
+                  }
+                }, 1000);
+              } catch (e) { console.error('[定时任务] 自动点击同步物流状态失败', e); }
+            }, 5000);
+          } else if (waited >= 40000) {
+            clearInterval(findTimer);
+            console.log('[定时任务] 小窗内40秒未找到同步物流按钮，本轮放弃');
+          }
+        }, 1000);
+        return;
+      }
+
       // 等待工具栏按钮出现，确认当前frame是正确的页面（避免多frame重复启动）
       let btn = null;
       try {
@@ -3558,15 +3868,7 @@
 
       expressFrameReady = true;
       console.log('%c[京巴士物流同步助手] 已加载', 'color: #e6a23c; font-weight: bold;');
-
-      setTimeout(() => {
-        createFloatingPanel();
-        floatingPanel.classList.add('express-mode');
-        document.getElementById('panel-title').textContent = '📮 京巴士物流同步';
-        floatingPanel.querySelectorAll('.jd-only').forEach(el => el.style.display = 'none');
-        floatingPanel.querySelectorAll('.express-only').forEach(el => el.style.display = '');
-        setupExpressTimer();
-      }, 1500);
+      // 旧浮动面板与定时同步物流调度已移除，仅保留手动 RUN_SYNC_EXPRESS 入口
       return;
     }
 
@@ -3585,16 +3887,17 @@
     }
 
     setTimeout(async () => {
-      createFloatingPanel();
+      // 旧“智查查同步助手”浮动面板已移除，功能均在定时任务面板
 
-      // 启动定时查单发货（独立于同步，不依赖登录）
-      setupAutoShipTimer();
+      // 查单发货已迁移到“定时任务”面板（固定30分钟），旧定时调度已全部移除
       // 点击订单标签（全部/待付款/待出库/已出库/暂停/锁定/已完成）5秒后自动同步风险检测
       bindOrderTabClick();
       // 直接打开/刷新“已取消”页：同样5秒/10秒后各检测一遍采购关联单
       if (window.location.href.indexOf('tabType=canceled') !== -1) {
         scheduleCanceledAssocCheck();
       }
+      // 订单列表所有标签页（全部/待付款/待出库/已出库/暂停/锁定/已完成/已取消）都显示定时任务面板
+      setupTaskPanel();
 
       // 1. 获取店铺信息（最多等8秒重试）
       updateStatus('正在识别店铺信息...', 'info');
@@ -3836,6 +4139,8 @@
       } else {
         removeAssocUI();
       }
+      // 订单列表所有标签页都显示定时任务面板，切换标签只确保面板存在，后台计时继续
+      setupTaskPanel();
       removeUnboughtUI();
       scheduleTabSync(tab.id);
     }, true);

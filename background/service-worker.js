@@ -1229,11 +1229,27 @@ async function submitReport(payload) {
     }
     window.addEventListener('message', function (e) {
       var d = e.data;
-      if (!d || d.type !== 'ZCC_XHR_PROXY_RESULT') return;
+      if (!d) return;
+      // 嵌套 srcdoc 弹层（如 /returns/add 确定保存）：代理请求逐层向上中继，最终到达京东页 after-sale-bind → SW → 第一方zzc标签页
+      // 原逻辑只处理本层结果回传，导致表单层的保存请求停在列表层，永远不会真正发出
+      if (d.type === 'ZCC_XHR_PROXY') {
+        try { parent.postMessage(d, '*'); } catch (err) {}
+        return;
+      }
+      if (d.type !== 'ZCC_XHR_PROXY_RESULT') return;
       var cb = cbs[d.id];
-      if (!cb) return;
-      delete cbs[d.id];
-      cb(d);
+      if (cb) {
+        delete cbs[d.id];
+        cb(d);
+        return;
+      }
+      // 本层没有该请求回调：说明请求来自嵌套弹层，把结果继续向下广播，由真正的发起层接收
+      try {
+        var frames = document.querySelectorAll('iframe');
+        for (var i = 0; i < frames.length; i++) {
+          try { if (frames[i].contentWindow) frames[i].contentWindow.postMessage(d, '*'); } catch (err) {}
+        }
+      } catch (err) {}
     });
     function proxy(method, url, headers, body, cb) {
       var id = ++seq;

@@ -6,7 +6,7 @@
  */
 const ZHICHACHA_CONFIG = {
   // ====== 插件版本号（更新插件时同步修改，用于检测新版本） ======
-  version: '1.0.18',
+  version: '2.0.0',
   // 后端API接口地址（最后不要加斜杠）
   apiBaseUrl: 'http://81.71.9.134/api',
   // 本地开发调试时解开下面这行，注释上面线上地址
@@ -47,26 +47,14 @@ const ZHICHACHA_CONFIG = {
   // 是否显示抓取通知
   showNotification: true,
 
-  // 定时批量查单发货（默认关闭，间隔默认30分钟）
-  autoShipEnabled: false,
-  autoShipInterval: 30,
+  // 定时查单发货/执行间隔/自动同步物流/执行时段等默认配置已移除，统一由订单页“定时任务”面板独立管理
 
-  // 自动切换店铺批量查单发货（默认关闭）
-  autoSwitchShopEnabled: false,   // 是否开启自动切换店铺（开启后按店铺轮转执行查单发货）
+  // 自动切换店铺流程参数（切换任务由定时任务面板触发）
   shopSwitchCountdown: 30,        // 切换前提示倒计时（秒），即预留的切换时间
   shopSwitchGap: 30000,           // 同一轮内，上一店发货完成到下一店开始切换的间隔（毫秒）
   shopListDialogTimeout: 8000,    // 点击店铺列表按钮后，等待店铺列表面板出现的超时（毫秒）
   shopChangeTimeout: 30000,       // 点击目标店铺后，等待页面刷新并切换到该店铺的超时（毫秒）
-  perShopShipTimeout: 120000,     // 单个店铺批量查单发货最长执行时间（毫秒，2分钟）
-
-  // 定时发货时间范围限制（勾选后仅在该时段内执行，格式 HH:MM）
-  autoShipTimeRangeEnabled: false,
-  autoShipTimeStart: '07:00',
-  autoShipTimeEnd: '22:00',
-
-  // 定时自动同步物流状态并发送取件码（京巴士页面，默认关闭）
-  autoSyncExpressEnabled: false,
-  autoSyncExpressInterval: 120  // 默认2小时
+  perShopShipTimeout: 120000      // 单个店铺批量查单发货最长执行时间（毫秒，2分钟）
 };
 
 // 兼容CommonJS和浏览器全局

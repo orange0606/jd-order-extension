@@ -12,7 +12,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   font-size: 14px;
   color: #333;
-  background: #f5f7fa;
+  background: linear-gradient(180deg, #f4f6ff 0%, #f8f9fd 100%);
 }
 
 .popup-container {
@@ -24,12 +24,13 @@ body {
 
 /* 头部 */
 .popup-header {
-  background: linear-gradient(135deg, #e1251b 0%, #ff4d4f 100%);
+  background: linear-gradient(135deg, #4f6df5 0%, #7a5af8 55%, #9b51e0 100%);
   color: white;
   padding: 16px 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  box-shadow: 0 8px 24px rgba(79, 109, 245, 0.28);
 }
 
 .logo {
@@ -100,6 +101,11 @@ body {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(122, 90, 248, 0.14);
+  border-radius: 12px;
+  box-shadow: 0 8px 22px rgba(31, 45, 61, 0.08);
+  padding: 16px;
 }
 
 .form-group {
@@ -124,8 +130,8 @@ body {
 
 .form-group input:focus {
   outline: none;
-  border-color: #e1251b;
-  box-shadow: 0 0 0 2px rgba(225, 37, 27, 0.1);
+  border-color: #7a5af8;
+  box-shadow: 0 0 0 3px rgba(122, 90, 248, 0.14);
 }
 
 .error-message {
@@ -150,22 +156,22 @@ body {
 }
 
 .btn:hover {
-  border-color: #e1251b;
-  color: #e1251b;
+  border-color: #7a5af8;
+  color: #7a5af8;
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #e1251b 0%, #ff4d4f 100%);
+  background: linear-gradient(135deg, #4f6df5 0%, #7a5af8 55%, #9b51e0 100%);
   color: white;
   border: none;
   font-weight: 500;
 }
 
 .btn-primary:hover {
-  background: linear-gradient(135deg, #c01e15 0%, #e84446 100%);
+  background: linear-gradient(135deg, #3f5fe0 0%, #6a4de8 100%);
   color: white;
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(225, 37, 27, 0.3);
+  box-shadow: 0 4px 14px rgba(79, 109, 245, 0.35);
 }
 
 .btn-danger {
@@ -193,7 +199,7 @@ body {
 }
 
 .btn-text:hover {
-  color: #e1251b;
+  color: #7a5af8;
 }
 
 /* 主界面 */
@@ -201,9 +207,11 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 12px;
-  background: white;
-  border-radius: 10px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(122, 90, 248, 0.14);
+  border-radius: 12px;
+  box-shadow: 0 8px 22px rgba(31, 45, 61, 0.08);
   margin-bottom: 10px;
   flex-shrink: 0;
 }
@@ -212,7 +220,7 @@ body {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #e1251b 0%, #ff4d4f 100%);
+  background: linear-gradient(135deg, #4f6df5 0%, #7a5af8 55%, #9b51e0 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -260,9 +268,11 @@ body {
 }
 
 .status-card {
-  background: white;
-  border-radius: 10px;
-  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(122, 90, 248, 0.14);
+  border-radius: 12px;
+  box-shadow: 0 8px 22px rgba(31, 45, 61, 0.08);
+  padding: 12px 16px;
   margin-bottom: 12px;
   flex-shrink: 0;
 }
@@ -276,9 +286,11 @@ body {
 
 /* 店铺列表 */
 .shops-section {
-  background: white;
-  border-radius: 10px;
-  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(122, 90, 248, 0.14);
+  border-radius: 12px;
+  box-shadow: 0 8px 22px rgba(31, 45, 61, 0.08);
+  padding: 12px 16px;
   margin-bottom: 12px;
   flex-shrink: 0;
 }
@@ -294,8 +306,8 @@ body {
 }
 
 .shop-count {
-  background: #f0f0f0;
-  color: #666;
+  background: rgba(122, 90, 248, 0.1);
+  color: #7a5af8;
   font-size: 12px;
   padding: 2px 8px;
   border-radius: 10px;
@@ -323,15 +335,16 @@ body {
   align-items: center;
   gap: 10px;
   padding: 10px;
-  border-radius: 8px;
-  background: #fafafa;
+  border-radius: 10px;
+  background: #fafbfe;
+  border: 1px solid transparent;
   transition: all 0.2s;
 }
 
 .shop-item.current {
-  background: linear-gradient(135deg, #fff1f0 0%, #fff7e6 100%);
-  border: 1px solid #ffccc7;
-  box-shadow: 0 2px 8px rgba(225, 37, 27, 0.1);
+  background: linear-gradient(135deg, #eef2ff 0%, #f6f1ff 100%);
+  border: 1px solid #d9d2ff;
+  box-shadow: 0 4px 12px rgba(122, 90, 248, 0.14);
 }
 
 .shop-item-icon {
@@ -361,7 +374,7 @@ body {
 }
 
 .shop-item.current .shop-item-name {
-  color: #e1251b;
+  color: #6a4de8;
   font-weight: 600;
 }
 
@@ -372,7 +385,7 @@ body {
 }
 
 .shop-item-badge {
-  background: linear-gradient(135deg, #e1251b 0%, #ff4d4f 100%);
+  background: linear-gradient(135deg, #4f6df5 0%, #7a5af8 55%, #9b51e0 100%);
   color: white;
   font-size: 11px;
   padding: 2px 8px;
@@ -419,7 +432,11 @@ body {
   margin-bottom: 0;
   max-height: 440px;
   overflow-y: auto;
-  padding-right: 4px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(122, 90, 248, 0.14);
+  border-radius: 12px;
+  box-shadow: 0 8px 22px rgba(31, 45, 61, 0.08);
+  padding: 4px 14px;
 }
 
 #settings-view.active {
@@ -432,7 +449,7 @@ body {
   width: 6px;
 }
 .settings-list::-webkit-scrollbar-thumb {
-  background: #ccc;
+  background: #cfc8f2;
   border-radius: 3px;
 }
 .settings-list::-webkit-scrollbar-track {
@@ -442,11 +459,11 @@ body {
 .settings-group-title {
   font-size: 12px;
   font-weight: 600;
-  color: #999;
+  color: #8a7fc9;
   letter-spacing: 1px;
   padding: 12px 0 6px;
   margin-top: 8px;
-  border-top: 1px solid #eee;
+  border-top: 1px solid #eceaf7;
 }
 
 .setting-item {
@@ -499,7 +516,8 @@ body {
 
 .input-full:focus {
   outline: none;
-  border-color: #e1251b;
+  border-color: #7a5af8;
+  box-shadow: 0 0 0 3px rgba(122, 90, 248, 0.14);
 }
 
 /* 开关 */
@@ -541,7 +559,7 @@ body {
 }
 
 input:checked + .slider {
-  background-color: #e1251b;
+  background: linear-gradient(135deg, #4f6df5, #7a5af8);
 }
 
 input:checked + .slider:before {
