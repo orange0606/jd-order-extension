@@ -946,24 +946,30 @@
 
   // 状态栏“定位关联单”按钮（计数 + 多次滚动校正），定位当前页
   function renderAssocJumpButton(orders) {
-    const statusEl = document.getElementById("scraper-status");
     const oldBtn = document.getElementById("jump-assoc-btn");
     if (oldBtn) oldBtn.remove();
-    if (!statusEl || !orders.length) return;
+    if (!orders.length) { window.__zccGotoNextAssoc = null; return; }
     let idx = -1;
+    // 逐个定位逻辑独立于状态栏：弹窗“立即定位”直接调用此函数，旧状态栏移除后依然可用
+    function gotoNext() {
+      idx++;
+      if (idx >= orders.length) idx = 0;
+      locateCanceledOrder(orders[idx].oid);
+      return idx;
+    }
+    window.__zccGotoNextAssoc = gotoNext;
+    const statusEl = document.getElementById("scraper-status");
+    if (!statusEl) return; // 旧状态栏已移除时不再渲染按钮，但定位功能仍可用
     const btn = document.createElement("button");
     btn.id = "jump-assoc-btn";
     btn.className = "orange-zcc-jump-risk-btn orange-zcc-jump-assoc-btn";
     btn.title = "已取消订单仍有采购关联单，点击逐个定位，请及时取消采购单避免货损";
     btn.textContent = "⚠️ 定位关联单 (0/" + orders.length + ")";
     btn.addEventListener("click", function () {
-      idx++;
-      if (idx >= orders.length) idx = 0;
-      btn.textContent = "⚠️ 下一个关联单 (" + (idx + 1) + "/" + orders.length + ")";
-      locateCanceledOrder(orders[idx].oid);
+      const i = gotoNext();
+      btn.textContent = "⚠️ 下一个关联单 (" + (i + 1) + "/" + orders.length + ")";
     });
     statusEl.appendChild(btn);
-    window.__zccGotoNextAssoc = function () { btn.click(); };
   }
 
   // 收集本页全部已取消订单（卡片 + 订单号 + 备注），不再依赖滚动识别
@@ -1497,6 +1503,7 @@
   let __taskPanelTimer = null;       // 全局仅一个调度唤醒定时器：时段内每分钟对齐检查，时段外睡到下个开始时间
   let __taskPanelVisibilityBound = false; // 是否已监听标签页可见性（回前台重排定时器）
   let __taskGreetingStart = 0;       // 可爱提醒卡片计时起点（本次页面打开至今，每分钟+1）
+  let __taskBindCount = 0;           // 已取消订单未处理关联单数量（用于提醒卡片智能提示）
   let __taskPanelLoginRefreshed = false; // 页面首次打开10秒后是否已重新获取登录态
   let __taskPanelReadyAt = 0;        // 首轮自动补执行最早时间（页面打开10秒后，手动立即执行不受限）
   let __taskShipRunning = false;     // 任务0防重入
@@ -1548,16 +1555,26 @@
     if (si) si.value = __taskTimeWindow.start;
     if (ei) ei.value = __taskTimeWindow.end;
   }
-  // 可爱执行提醒：时段内每分钟累计“已为您执行任务xx分钟/小时”；时段外按时间显示夜深/早安等休息提醒
+  // 可爱执行提醒：有未处理关联单时优先提醒；否则时段内累计“已为您执行任务xx分钟/小时”，时段外按时间显示夜深/早安等
   function updateTaskGreeting() {
     const title = document.getElementById('zcc-tp-greeting-title');
     const sub = document.getElementById('zcc-tp-greeting-sub');
     const icon = document.getElementById('zcc-tp-greeting-icon');
+    const card = document.getElementById('zcc-tp-greeting');
     if (!title || !sub) return;
     if (!__taskGreetingStart) __taskGreetingStart = Date.now();
+    const mins = Math.max(0, Math.floor((Date.now() - __taskGreetingStart) / 60000));
     const h = new Date().getHours();
+    if (card) card.classList.toggle('is-alert', __taskBindCount > 0); // 有关联单时卡片进入提醒态
+    if (__taskBindCount > 0) {
+      // 宠物机器人式主动提醒：发现未处理关联单，引导主人展开面板去处理
+      if (icon) icon.textContent = '🤖';
+      title.textContent = '主人，还有 ' + __taskBindCount + ' 个待处理订单！';
+      if (h >= 23 || h < 5) sub.textContent = '夜深了也不放心呀～点我展开面板，处理完再睡好不好';
+      else sub.textContent = '有采购关联单或中转仓订单（备注含“备”）没处理～点我展开面板看看吧';
+      return;
+    }
     if (inTaskTimeWindow()) {
-      const mins = Math.max(0, Math.floor((Date.now() - __taskGreetingStart) / 60000));
       let text;
       if (mins < 60) text = '已为您执行任务 ' + mins + ' 分钟';
       else {
@@ -1738,7 +1755,10 @@
     const logged = await zccHasToken(); // 未登录仅查单发货可用
     p = document.createElement('div');
     p.id = 'zcc-task-panel';
-    let bodyHtml = '<div class="zcc-tp-greeting"><span class="zcc-tp-greeting-emoji" id="zcc-tp-greeting-icon">🐻</span>' +
+    let bodyHtml = '';
+    // 提醒卡片放在 body 之外，折叠定时任务列表时仍常显（像宠物机器人的小脑袋）
+    const greetingHtml = '<div class="zcc-tp-greeting" id="zcc-tp-greeting" title="点击展开定时任务面板">' +
+      '<span class="zcc-tp-greeting-emoji" id="zcc-tp-greeting-icon">🐻</span>' +
       '<div class="zcc-tp-greeting-text"><div class="zcc-tp-greeting-title" id="zcc-tp-greeting-title">已为您执行任务 0 分钟</div>' +
       '<div class="zcc-tp-greeting-sub" id="zcc-tp-greeting-sub">我会乖乖盯着任务，到点就自动开工～</div></div></div>';
     TASK_DEFS.forEach(function (t, i) {
@@ -1766,7 +1786,7 @@
         const disabled = t.needLogin && !logged;
         return '<button type="button" class="zcc-tp-icon" id="zcc-tp-icon-' + t.kind + '" title="立即执行：' + t.name + '"' + (disabled ? ' disabled' : '') + '>' + t.icon + '</button>';
       }).join('') +
-      '</span><span class="zcc-tp-toggle" id="zcc-tp-toggle">折叠 ▲</span></div>' +
+      '</span><span class="zcc-tp-toggle" id="zcc-tp-toggle">折叠 ▲</span></div>' + greetingHtml +
       '<div class="zcc-tp-body" id="zcc-tp-body">' + bodyHtml +
       '<div class="zcc-tp-footer"><span id="zcc-tp-time-window">自动执行仅 08:00~20:00</span> · 需保持本页打开' +
       '<button type="button" class="zcc-tp-time-edit" id="zcc-tp-time-edit" title="编辑自动执行时间范围">✎</button></div>' +
@@ -1775,6 +1795,19 @@
       '<button type="button" id="zcc-tp-time-save">保存</button><span class="zcc-tp-time-tip" id="zcc-tp-time-tip"></span></div></div>';
     document.body.appendChild(p);
     makePanelDraggable(p, p.querySelector('#zcc-tp-header'), '.zcc-tp-toggle, .zcc-tp-icon'); // 面板标题栏拖动，折叠/快捷图标按钮除外
+    // 点提醒卡片：若面板折叠则展开，并高亮“已取消订单关联单数量”任务行，像宠物机器人把主人带到问题前
+    p.querySelector('#zcc-tp-greeting').addEventListener('click', function () {
+      const body = p.querySelector('#zcc-tp-body');
+      if (body && body.style.display === 'none') {
+        body.style.display = 'block';
+        p.querySelector('#zcc-tp-toggle').textContent = '折叠 ▲';
+      }
+      const row = p.querySelector('.zcc-tp-task[data-kind="canceled"]');
+      if (row) {
+        row.classList.add('is-attention');
+        setTimeout(function () { row.classList.remove('is-attention'); }, 3200);
+      }
+    });
     // 面板仅由用户手动折叠/展开，不再进入页面后自动折叠
     p.querySelector('#zcc-tp-header').addEventListener('click', function (e) {
       if (e.target.closest('.zcc-tp-icon')) return; // 快捷图标不触发折叠
@@ -1992,13 +2025,15 @@
     try {
       chrome.storage.local.get('zcc_task_canceled_assoc_binds', function (st) {
         const n = (st && st.zcc_task_canceled_assoc_binds) || 0;
+        __taskBindCount = n; // 同步给可爱提醒卡片，用于主动提示未处理关联单
         const el = document.getElementById('zcc-tp-binds');
+        updateTaskGreeting();
         if (!el) return;
         if (n > 0) {
           el.style.display = '';
           el.textContent = '🔗 ' + n;
           el.classList.add('is-warn');
-          el.title = '已取消订单仍有 ' + n + ' 个采购关联单未处理';
+          el.title = '已取消订单仍有 ' + n + ' 个待处理（采购关联单 + 备注含“备”的中转仓订单）';
         } else {
           el.style.display = 'none';
           el.classList.remove('is-warn');
@@ -2007,35 +2042,123 @@
     } catch (e) {}
   }
   function setTaskBindCount(n) {
+    __taskBindCount = n || 0;
     try { chrome.storage.local.set({ zcc_task_canceled_assoc_binds: n }); } catch (e) {}
     updateTaskBindBadge();
+    updateTaskGreeting();
   }
 
-  // 任务1小窗：加载已取消列表（shop.jd.com 与当前页同源可直接读DOM，且该域 content script 不注入iframe，互不影响）
-  // 等订单数连续2次稳定视为渲染完成，最多等25秒
+  // 从订单页DOM/文本中健壮提取订单号：兼容旧版 .card 结构，也兼容新版纯文字“订单号：xxxx”
+  function extractOrderIdsFromDoc(doc) {
+    const ids = new Set();
+    if (!doc) return [];
+    try {
+      doc.querySelectorAll(SELECTORS.orderCard).forEach(function (card) {
+        const el = card.querySelector(SELECTORS.orderId);
+        const txt = el ? el.textContent.trim() : '';
+        const m = txt.match(/\d{6,24}/);
+        if (m) ids.add(m[0]);
+      });
+    } catch (e) {}
+    try {
+      const text = doc.body ? doc.body.innerText : '';
+      const re = /订单号[：:\s]*([0-9]{8,24})/g;
+      let m;
+      while ((m = re.exec(text))) ids.add(m[1]);
+    } catch (e) {}
+    return Array.from(ids);
+  }
+
+  // 提取已取消订单（订单号 + 备注）：备注含“备”= 雀手中转仓取消订单，无采购关联单也需统计提醒
+  function extractCanceledOrdersFromDoc(doc) {
+    const map = new Map();
+    if (!doc) return [];
+    try {
+      doc.querySelectorAll(SELECTORS.orderCard).forEach(function (card) {
+        const el = card.querySelector(SELECTORS.orderId);
+        const txt = el ? el.textContent.trim() : '';
+        const m = txt.match(/\d{6,24}/);
+        if (!m) return;
+        const rEl = card.querySelector(SELECTORS.remark);
+        const remark = rEl ? rEl.textContent.trim() : '';
+        map.set(m[0], { oid: m[0], remark: remark, que: remark.indexOf('备') !== -1 });
+      });
+    } catch (e) {}
+    if (!map.size) {
+      // 无 .card 结构时退化为纯文字订单号（此时拿不到备注，que 默认 false）
+      try {
+        const text = doc.body ? doc.body.innerText : '';
+        const re = /订单号[：:\s]*([0-9]{8,24})/g;
+        let m;
+        while ((m = re.exec(text))) if (!map.has(m[1])) map.set(m[1], { oid: m[1], remark: '', que: false });
+      } catch (e) {}
+    }
+    return Array.from(map.values());
+  }
+
+  // 已取消列表采集：固定小窗（iframe）加载真实订单页，不跳新标签页；
+  // 渲染不稳定时用 postMessage 兜底读取 + 到点自动重载一次；勾选“视图”时小窗可见，任务结束自动关闭
   async function collectCanceledIdsViaFrame() {
     const visible = await getTaskSwitch('zcc_task_canceled_assoc_view');
+    const cur = location.href;
+    if (/order-list/.test(cur) && /tabType=canceled/.test(cur)) {
+      for (let i = 0; i < 6; i++) {
+        const orders = extractCanceledOrdersFromDoc(document);
+        if (orders.length) return { ok: true, orders: orders, ids: orders.map(function (o) { return o.oid; }), from: 'current' };
+        await new Promise(function (r) { setTimeout(r, 1000); });
+      }
+    }
     return new Promise(function (resolve) {
-      const ref = createTaskFrame('zcc-task-canceled-frame', 'https://shop.jd.com/jdm/trade/orders/order-list?tabType=canceled', visible, '已取消订单列表');
+      const ref = createTaskFrame('zcc-task-canceled-frame',
+        'https://shop.jd.com/jdm/trade/orders/order-list?tabType=canceled&zcc_collect=1', visible, '已取消订单 · 读取中');
       __taskCanceledFrame = ref;
       const iframe = ref.iframe;
-      let lastCount = -1, stable = 0, waited = 0;
-      const timer = setInterval(function () {
-        waited += 1000;
-        const ids = [];
+      let finished = false, reloaded = false, msgOrders = null, lastCount = -1, stable = 0, waited = 0, lastErr = '';
+      const startAt = Date.now();
+      function onMsg(e) {
+        try {
+          const d = e.data;
+          if (!d || d.type !== 'ZCC_COLLECT_CANCELED_PAGE_RESULT') return;
+          if (d.orders && d.orders.length) msgOrders = d.orders; // 小窗内脚本主动回传（含备注“备”标记），跨域读不到DOM时也能拿到
+        } catch (err) {}
+      }
+      window.addEventListener('message', onMsg);
+      function finish(resp) {
+        if (finished) return;
+        finished = true;
+        clearInterval(timer);
+        window.removeEventListener('message', onMsg);
+        destroyTaskFrame(ref); // 任务结束关闭固定小窗
+        __taskCanceledFrame = null;
+        resolve(resp);
+      }
+      function readOrders() {
         try {
           const doc = iframe.contentDocument;
-          if (doc) {
-            doc.querySelectorAll(SELECTORS.orderCard).forEach(function (card) {
-              const el = card.querySelector(SELECTORS.orderId);
-              const oid = el ? el.textContent.trim() : '';
-              if (/^\d{6,}$/.test(oid)) ids.push(oid);
-            });
-          }
-        } catch (e) {}
-        if (ids.length > 0 && ids.length === lastCount) stable++; else stable = 0;
-        lastCount = ids.length;
-        if (stable >= 2 || waited >= 25000) { clearInterval(timer); resolve(ids); }
+          const orders = doc ? extractCanceledOrdersFromDoc(doc) : [];
+          if (orders.length) return orders;
+        } catch (e) { lastErr = 'cross-origin'; }
+        return msgOrders || [];
+      }
+      const timer = setInterval(function () {
+        if (!ref.wrap.isConnected) { finish({ ok: false, error: '小窗已关闭，本轮任务结束' }); return; }
+        waited += 1;
+        const orders = readOrders();
+        if (orders.length > 0 && orders.length === lastCount) stable++; else stable = 0;
+        lastCount = orders.length;
+        setTaskStatus('canceled', '正在读取已取消订单列表（已等待 ' + waited + 's' + (orders.length ? '，已识别 ' + orders.length + ' 单' : '') + '）...', 'is-checking');
+        if (stable >= 2) { finish({ ok: true, orders: orders, ids: orders.map(function (o) { return o.oid; }) }); return; }
+        // 12秒还没读到：可能是渲染卡住/缓存问题，自动重载一次小窗
+        if (!reloaded && waited >= 12 && !orders.length) {
+          reloaded = true;
+          try { iframe.src = iframe.src; } catch (e) {}
+          setTaskStatus('canceled', '页面未渲染，正在重新加载小窗...', 'is-checking');
+        }
+        if (Date.now() - startAt >= 45000) {
+          finish({ ok: false, error: lastErr === 'cross-origin'
+            ? '订单页在小窗中被限制读取（可能被登录或风控拦截）'
+            : '已取消订单页加载超时，未读取到订单列表' });
+        }
       }, 1000);
     });
   }
@@ -2141,14 +2264,20 @@
     try {
       setTaskLastRun('zcc_task_canceled_assoc_run'); // 触发即记录本轮时间（失败也顺延，避免到点补执行反复重试）
       if (!(await zccHasToken())) { setTaskStatus('canceled', '未登录智查查，无法执行', 'is-error'); return; }
-      setTaskStatus('canceled', '正在通过小窗加载已取消订单页...', 'is-checking');
-      const ids = await collectCanceledIdsViaFrame();
-      if (!ids.length) { setTaskStatus('canceled', '未读取到已取消订单（小窗加载超时或无订单）', 'is-error'); return; }
+      setTaskStatus('canceled', '正在读取已取消订单页...', 'is-checking');
+      const read = await collectCanceledIdsViaFrame();
+      if (!read || !read.ok) {
+        setTaskStatus('canceled', '读取失败：' + ((read && read.error) || '已取消订单页未加载出列表'), 'is-error');
+        return;
+      }
+      const orders = read.orders || (read.ids || []).map(function (oid) { return { oid: oid, remark: '', que: false }; });
+      const ids = orders.map(function (o) { return o.oid; });
+      if (!ids.length) { setTaskStatus('canceled', '✅ 已取消订单页没有订单（0 个）', 'is-ok'); setTaskBindCount(0); return; }
       setTaskStep('canceled', 1);
-      let foundOrders = 0, foundBinds = 0;
+      const foundMap = new Map(); // oid -> 关联单个数（主行 + extra.buy 附加采购单）
       const BATCH = 50; // 与已取消检测同一口径：主行 + extra.buy 附加采购单
       for (let i = 0; i < ids.length; i += BATCH) {
-        setTaskStatus('canceled', '接口直查进度 ' + i + '/' + ids.length + '，已发现 ' + foundOrders + ' 个仍关联订单', 'is-checking');
+        setTaskStatus('canceled', '接口直查进度 ' + i + '/' + ids.length + '，已发现 ' + foundMap.size + ' 个仍关联订单', 'is-checking');
         const resp = await new Promise(function (resolve) {
           try { chrome.runtime.sendMessage({ type: 'ZCC_AFS_BIND_QUERY', orderIds: ids.slice(i, i + BATCH) }, resolve); }
           catch (e) { resolve(null); }
@@ -2160,17 +2289,28 @@
           const oid = String(row.order_id || '').trim();
           if (!oid) return;
           const extra = row.extra && Array.isArray(row.extra.buy) ? row.extra.buy.length : 0;
-          foundOrders++;
-          foundBinds += 1 + extra;
+          foundMap.set(oid, (foundMap.get(oid) || 0) + 1 + extra);
         });
       }
+      const foundOrders = foundMap.size;
+      let foundBinds = 0;
+      foundMap.forEach(function (n) { foundBinds += n; });
+      // 雀手中转仓取消订单（备注含“备”）：接口查不到关联单，也需统计提醒；与已关联订单去重
+      const queOrders = orders.filter(function (o) { return o.que && !foundMap.has(o.oid); });
+      const queCount = queOrders.length;
+      const pendingTotal = foundBinds + queCount; // 待处理总数 = 关联单 + 中转仓订单
       const timeText = new Date().toTimeString().slice(0, 5);
-      setTaskStatus('canceled', ids.length + ' 个已取消订单：' +
-        (foundOrders ? '⚠️ ' + foundOrders + ' 个订单仍关联（共 ' + foundBinds + ' 个关联单）' : '✅ 无未取消关联单') +
-        ' · ' + timeText, foundOrders ? 'is-warn' : 'is-ok');
-      setTaskBindCount(foundBinds); // 头部角标：有未处理关联单则闪烁提醒
+      let summary;
+      if (foundOrders || queCount) {
+        summary = '⚠️ ' + (foundOrders ? foundOrders + ' 个订单仍关联（共 ' + foundBinds + ' 个关联单）' : '无采购关联单') +
+          (queCount ? '，另有 ' + queCount + ' 个中转仓订单（备注含“备”）' : '');
+      } else {
+        summary = '✅ 无未取消关联单及中转仓订单';
+      }
+      setTaskStatus('canceled', ids.length + ' 个已取消订单：' + summary + ' · ' + timeText, (foundOrders || queCount) ? 'is-warn' : 'is-ok');
+      setTaskBindCount(pendingTotal); // 头部角标/提醒卡片：关联单 + 中转仓订单都计入待处理
       setTaskStep('canceled', 2);
-      console.log('[定时任务] 已取消关联单统计：共 ' + ids.length + ' 单，仍关联 ' + foundOrders + ' 单（' + foundBinds + ' 个关联单）');
+      console.log('[定时任务] 已取消关联单统计：共 ' + ids.length + ' 单，仍关联 ' + foundOrders + ' 单（' + foundBinds + ' 个关联单），中转仓订单（备注含“备”）' + queCount + ' 个');
     } catch (e) {
       setTaskStatus('canceled', '执行异常：' + ((e && e.message) || e), 'is-error');
     } finally {
@@ -3613,6 +3753,24 @@
   }
 
   // ==================== 消息监听 ====================
+
+  // 采集专用页面（小窗 iframe 或后台标签页）：确保切到“已取消”标签，并把读到的订单号主动回传给父页面，
+  // 这样即使父页面因跨域/风控读不到 iframe 的 DOM，也能拿到结果
+  function setupCanceledCollector() {
+    let clicked = false;
+    const t0 = Date.now();
+    const timer = setInterval(function () {
+      if (!clicked) {
+        const ctab = document.getElementById('tab-canceled');
+        if (ctab) { clicked = true; try { ctab.click(); } catch (e) {} }
+      }
+      const orders = extractCanceledOrdersFromDoc(document);
+      const ids = orders.map(function (o) { return o.oid; });
+      try { window.parent.postMessage({ type: 'ZCC_COLLECT_CANCELED_PAGE_RESULT', orders: orders, ids: ids, url: location.href }, '*'); } catch (e) {}
+      try { chrome.runtime.sendMessage({ type: 'ZCC_COLLECT_CANCELED_PAGE_RESULT', orders: orders, ids: ids, url: location.href }); } catch (e) {}
+      if (orders.length || Date.now() - t0 > 40000) clearInterval(timer);
+    }, 1500);
+  }
   
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     switch (message.type) {
@@ -3874,6 +4032,18 @@
 
     if (!isTargetPage()) {
       console.log('[京东订单抓取] 当前不是订单页面');
+      return;
+    }
+
+    // 采集专用页面（?zcc_collect=1）：只提供订单号读取能力，不渲染面板、不启动定时任务，避免重复执行
+    if (/[?&]zcc_collect=1/.test(window.location.search)) {
+      if (window.top !== window.self) {
+        // 小窗 iframe 内：只回传订单号，不注入任何脚本/样式，避免影响京东页渲染
+        console.log('[京东订单抓取] 采集小窗页面，仅回传订单号');
+      } else {
+        console.log('[京东订单抓取] 采集专用页面，跳过面板与任务初始化');
+      }
+      setupCanceledCollector();
       return;
     }
 

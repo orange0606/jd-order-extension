@@ -1216,7 +1216,13 @@ button.orange-zcc-report-btn:active {
 #zcc-task-panel .zcc-tp-divider { margin:12px 0; border-top:1px solid #f0f0f7; }
 #zcc-task-panel .zcc-tp-footer { margin-top:12px; font-size:11px; color:#b6bcc9; text-align:center; }
 /* 可爱执行提醒卡片：淡紫粉渐变 + emoji轻摆动，随每分钟调度更新 */
-#zcc-task-panel .zcc-tp-greeting { display:flex; align-items:center; gap:10px; margin-bottom:12px; padding:10px 12px; border-radius:12px; background:linear-gradient(135deg,#f1f4ff 0%,#f8f0ff 55%,#fff3f8 100%); border:1px solid rgba(122,90,248,.14); box-shadow:0 4px 14px rgba(122,90,248,.08); }
+#zcc-task-panel .zcc-tp-greeting { display:flex; align-items:center; gap:10px; margin-top:10px; margin-bottom:10px; padding:10px 12px; border-radius:12px; background:linear-gradient(135deg,#f1f4ff 0%,#f8f0ff 55%,#fff3f8 100%); border:1px solid rgba(122,90,248,.14); box-shadow:0 4px 14px rgba(122,90,248,.08); cursor:pointer; transition:background .3s ease,box-shadow .3s ease,border-color .3s ease; }
+#zcc-task-panel .zcc-tp-greeting:hover { box-shadow:0 6px 18px rgba(122,90,248,.16); }
+#zcc-task-panel .zcc-tp-greeting.is-alert { background:linear-gradient(135deg,#fff0f5 0%,#fff4e8 100%); border-color:rgba(255,110,150,.34); box-shadow:0 4px 18px rgba(255,110,150,.18); }
+#zcc-task-panel .zcc-tp-greeting.is-alert .zcc-tp-greeting-title { color:#e0457b; }
+#zcc-task-panel .zcc-tp-greeting.is-alert .zcc-tp-greeting-emoji { animation-duration:1.2s; }
+#zcc-task-panel .zcc-tp-task.is-attention { animation:zccTaskAttention 1s ease-in-out 3; border-radius:10px; }
+@keyframes zccTaskAttention { 0%,100% { box-shadow:0 0 0 rgba(255,110,150,0); background:transparent; } 50% { box-shadow:0 0 0 3px rgba(255,110,150,.18); background:rgba(255,240,245,.65); } }
 #zcc-task-panel .zcc-tp-greeting-emoji { flex:0 0 auto; font-size:26px; line-height:1; animation:zccTaskGreetingBob 2.4s ease-in-out infinite; }
 #zcc-task-panel .zcc-tp-greeting-text { min-width:0; }
 #zcc-task-panel .zcc-tp-greeting-title { font-size:12px; font-weight:700; color:#6a4de8; line-height:1.5; }
