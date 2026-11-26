@@ -18,7 +18,12 @@
     } catch (e) { pluginLoggedIn = false; }
   }
   refreshPluginLogin();
-  setInterval(refreshPluginLogin, 10000); // 登录/退出后10秒内自动生效
+  // 性能：改用 storage 变化事件驱动登录态，去掉每10秒轮询
+  try {
+    chrome.storage.onChanged.addListener(function (changes, area) {
+      if (area === 'local' && changes.zhichacha_token) refreshPluginLogin();
+    });
+  } catch (e) {}
 
   var MODAL_ID = 'zcc-order-pdd-modal';
   var BTN_CLASS = 'zcc-pdd-win-btn';
@@ -45,6 +50,7 @@
       // 已有弹窗：换单直接更新 iframe 和标题，位置保留
       modal.querySelector('.zcc-pdd-modal-title-text').textContent = '采购单 ' + sn;
       modal.querySelector('.zcc-pdd-modal-open-tab').setAttribute('data-url', url);
+      document.body.appendChild(modal); // 移到同级最上层，避免台账列表遮挡已创建的采购单小窗
       modal.style.display = 'flex';
       loadFrame(modal, url);
       return;
@@ -59,6 +65,8 @@
       '<div class="zcc-pdd-modal-header" style="flex:0 0 34px;display:flex;align-items:center;gap:8px;padding:0 10px;' +
       'background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;cursor:move;user-select:none;font-size:13px;">' +
       '  <span class="zcc-pdd-modal-title-text" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">采购单 ' + sn + '</span>' +
+      '  <button type="button" class="zcc-pdd-modal-refresh" title="刷新当前小窗页面"' +
+      '    style="border:none;background:rgba(255,255,255,.2);color:#fff;border-radius:3px;cursor:pointer;font-size:12px;height:22px;padding:0 8px;">↻ 刷新</button>' +
       '  <button type="button" class="zcc-pdd-modal-open-tab" data-url="' + url + '" title="在新标签页打开"' +
       '    style="border:none;background:rgba(255,255,255,.2);color:#fff;border-radius:3px;cursor:pointer;font-size:12px;height:22px;padding:0 8px;">↗ 新标签</button>' +
       '  <button type="button" class="zcc-pdd-modal-close" title="关闭"' +
@@ -100,11 +108,20 @@
       // 关闭只移除注入规则，不做任何 Cookie 清除/恢复（防止把拼多多整站弄掉登录）
       try { chrome.runtime.sendMessage({ type: 'ZCC_PDD_EMBED_OFF' }, function () { void chrome.runtime.lastError; }); } catch (err) {}
     }, true);
+    modal.querySelector('.zcc-pdd-modal-refresh').addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      // 刷新时重新走内嵌登录态加载，避免跨域直接操作iframe.location
+      var currentUrl = modal.querySelector('.zcc-pdd-modal-open-tab').getAttribute('data-url') || url;
+      loadFrame(modal, currentUrl);
+    }, true);
     modal.querySelector('.zcc-pdd-modal-open-tab').addEventListener('click', function (e) {
       e.preventDefault(); e.stopPropagation();
       window.open(this.getAttribute('data-url') || url, '_blank', 'noopener');
     }, true);
   }
+
+  // 提供给插件台账列表的采购单号直接打开小窗，复用本文件登录闸门与拖动/缩放能力
+  window.__zccOpenPddModal = openPddModal;
 
   function loadFrame(modal, url) {
     var frame = modal.querySelector('iframe');
@@ -120,6 +137,7 @@
   // ---------- 关联单扫描：采购订单号后插入小窗按钮 ----------
   function scan() {
     if (!pluginLoggedIn) return; // 插件未登录不注入小窗按钮
+    if (document.hidden) return; // 性能：后台标签页不扫描，回到前台由补扫覆盖
     try {
       var links = document.querySelectorAll('a.j_buyMsg_orderId');
       for (var i = 0; i < links.length; i++) {
@@ -148,5 +166,7 @@
   }
 
   setTimeout(scan, 5000);   // 首次5秒：等京巴士关联单渲染
-  setInterval(scan, 3000);  // 补扫：tab切换/翻页/懒加载
+  setInterval(scan, 5000);  // 补扫：tab切换/翻页/懒加载（性能：3秒→5秒，后台跳过）
+  // 回到前台立即补扫一次，保证后台期间新增的关联单也能注入按钮
+  try { document.addEventListener('visibilitychange', function () { if (!document.hidden) scan(); }); } catch (e) {}
 })();

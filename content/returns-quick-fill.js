@@ -50,7 +50,7 @@
           }
         }).catch(function () {});
       } catch (e) {}
-    }, 800);
+    }, 1500); // 性能：剪贴板轮询 800ms→1500ms，粘贴事件仍即时响应
     return;
   }
 
@@ -293,7 +293,7 @@
         navigator.clipboard.readText().then(handleClipboard).catch(function () {});
       }
     } catch (e) {}
-  }, 800);
+  }, 1500); // 性能：剪贴板轮询 800ms→1500ms，粘贴事件仍即时响应
   // 粘贴事件即时响应（比轮询更快）
   document.addEventListener('paste', function (e) {
     try {
@@ -362,6 +362,27 @@
     document.body.appendChild(bar);
   }
   buildButtons();
+  // ---------- 5) 售后小窗携带值自动填单：订单号 + 退货物流单号 ----------
+  var orderPrefillApplied = { orderId: '', waybill: '' };
+  function applyOrderPrefill() {
+    var data = window.__ZCC_ORDER_PREFILL || {};
+    var pending = false;
+    if (data.orderId && orderPrefillApplied.orderId !== data.orderId) {
+      if (fillOrder(data.orderId)) orderPrefillApplied.orderId = data.orderId;
+      else pending = true;
+    }
+    if (data.waybill && orderPrefillApplied.waybill !== data.waybill) {
+      if (fillWaybill(data.waybill)) orderPrefillApplied.waybill = data.waybill;
+      else pending = true;
+    }
+    return !pending;
+  }
+  var orderPrefillTries = 0;
+  var orderPrefillTimer = setInterval(function () {
+    orderPrefillTries++;
+    // 每个值只自动填一次，后续不覆盖用户手动修改；DOM未就绪时最多重试10秒
+    if (applyOrderPrefill() || orderPrefillTries > 40) clearInterval(orderPrefillTimer);
+  }, 250);
   // body 尚未就绪时兜底重试
   var btnTries = 0;
   var btnTimer = setInterval(function () {

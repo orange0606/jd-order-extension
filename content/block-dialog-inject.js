@@ -139,8 +139,8 @@
     });
     qr.appendChild(fast);
   }
-  // 轮询注入（二维码弹窗可能延迟出现）
-  var __injectTimer = setInterval(injectFastBindBtn, 1500);
+  // 轮询注入（二维码弹窗可能延迟出现）；性能：后台标签页跳过
+  var __injectTimer = setInterval(function () { if (!document.hidden) injectFastBindBtn(); }, 1500);
 
   // 捕获阶段监听：用户点「绑定采购单(匹配当前下单)」按钮
   document.addEventListener('click', function (e) {
@@ -255,5 +255,10 @@
 
     title.addEventListener('touchend', function () { dragging = false; }, { passive: true });
   }
-  setInterval(enableTouchDrag, 1000);
+  // 性能：触摸拖动绑定成功后即停止轮询，避免每秒空转 querySelector
+  var __touchTimer = setInterval(function () {
+    enableTouchDrag();
+    var box = document.querySelector('.dragBox');
+    if (box && box.getAttribute('data-zcc-touch-drag') === '1') clearInterval(__touchTimer);
+  }, 1000);
 })();

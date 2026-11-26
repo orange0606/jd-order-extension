@@ -1,7 +1,7 @@
 ﻿{
   "manifest_version": 3,
   "name": "京东订单数据抓取助手",
-  "version": "2.0.1",
+  "version": "3.0.1",
   "description": "自动检测京东商家后台订单页面，抓取订单数据并同步到智查查风控系统",
   "permissions": [
     "storage",
@@ -21,6 +21,7 @@
     "https://zzc.jingbashi.com/*",
     "http://localhost:3000/*",
     "http://127.0.0.1:3000/*",
+    "http://81.71.9.134/*",
     "https://mobile.yangkeduo.com/*"
   ],
   "background": {
@@ -29,18 +30,55 @@
   "content_scripts": [
     {
       "matches": [
+        "http://localhost/*",
+        "http://127.0.0.1/*",
+        "http://81.71.9.134/zhichacha/*"
+      ],
+      "js": [
+        "content/ledger-bridge.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "https://shop.jd.com/jdm/trade/*"
+      ],
+      "js": [
+        "content/ledger-panel.js"
+      ],
+      "css": [
+        "content/ledger-panel.css"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    },
+    {
+      "matches": [
         "https://shop.jd.com/jdm/trade/orders/order-list*",
         "https://shop.jd.com/jdm/trade/orders/*"
       ],
       "js": [
         "config.js",
-        "content/content.js"
+        "content/content.js",
+        "content/desktop-pet.js"
       ],
       "css": [
-        "content/content.css"
+        "content/content.css",
+        "content/desktop-pet.css"
       ],
       "run_at": "document_idle",
       "all_frames": true
+    },
+    {
+      "matches": [
+        "https://jzt.jd.com/home/*"
+      ],
+      "js": [
+        "content/ad-cost-collector.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
     },
     {
       "matches": [
@@ -147,6 +185,7 @@
   "web_accessible_resources": [
     {
       "resources": [
+        "icons/*",
         "content/*"
       ],
       "matches": [

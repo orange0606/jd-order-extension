@@ -1,0 +1,58 @@
+/* 小泷妹子桌宠：默认右上角right:20%，top与定时任务面板同为56px；拖动后按布局版本记住位置 */
+#zcc-desktop-pet { position:fixed; left:auto; right:20%; top:56px; bottom:auto; width:300px; height:360px; z-index:2147483645; pointer-events:none; font-family:"Microsoft YaHei",Arial,sans-serif; }
+#zcc-desktop-pet * { box-sizing:border-box; }
+/* 气泡固定在人物上方、箭头朝下；人物和圆弧按钮统一以容器底部定位 */
+#zcc-desktop-pet .zcc-pet-bubble { position:absolute; left:16px; top:auto; bottom:184px; width:282px; padding:13px 16px 12px; border:1px solid rgba(135,150,231,.24); border-radius:18px 18px 18px 5px; background:rgba(255,255,255,.96); box-shadow:0 8px 28px rgba(69,76,140,.18); color:#40476d; backdrop-filter:blur(8px); pointer-events:auto; cursor:move; user-select:none; }
+#zcc-desktop-pet .zcc-pet-bubble::after { content:''; position:absolute; left:26px; top:auto; bottom:-9px; width:17px; height:17px; background:rgba(255,255,255,.96); border-right:1px solid rgba(135,150,231,.24); border-bottom:1px solid rgba(135,150,231,.24); transform:rotate(45deg); }
+#zcc-desktop-pet .zcc-pet-bubble-title { font-size:13px; font-weight:700; line-height:1.5; color:#7162b7; }
+#zcc-desktop-pet .zcc-pet-bubble-text { margin-top:5px; font-size:12px; line-height:1.65; }
+#zcc-desktop-pet .zcc-pet-bubble-footer { display:flex; align-items:center; gap:6px; margin-top:8px; }
+#zcc-desktop-pet .zcc-pet-bubble-meta { flex:1; min-width:0; font-size:10px; line-height:1.4; color:#a2a5bd; }
+#zcc-desktop-pet .zcc-pet-interact { flex:0 0 auto; padding:3px 7px; border:1px solid #e5ddf4; border-radius:999px; background:#f7f3ff; color:#9674bd; font-size:10px; line-height:1.4; cursor:pointer; pointer-events:auto; user-select:none; }
+#zcc-desktop-pet .zcc-pet-interact:hover { background:#eee5fb; color:#8159ae; }
+#zcc-desktop-pet .zcc-pet-interact:active { transform:scale(.96); }
+#zcc-desktop-pet .zcc-pet-bubble.is-alert { border-color:#f5a1b5; background:linear-gradient(135deg,#fff9fb,#fff1f3); box-shadow:0 8px 28px rgba(232,97,128,.2); }
+#zcc-desktop-pet .zcc-pet-bubble.is-alert .zcc-pet-bubble-title { color:#e34e74; }
+#zcc-desktop-pet .zcc-pet-bubble.is-warn { border-color:#efca88; background:linear-gradient(135deg,#fffdf8,#fff8eb); }
+#zcc-desktop-pet .zcc-pet-bubble.is-warn .zcc-pet-bubble-title { color:#c8872f; }
+#zcc-desktop-pet .zcc-pet-bubble.is-celebrate { border-color:#d6a3ef; background:linear-gradient(135deg,#fffaff,#f5f0ff); }
+#zcc-desktop-pet .zcc-pet-bubble.is-celebrate .zcc-pet-bubble-title { color:#9c55c7; }
+#zcc-desktop-pet .zcc-pet-character { position:absolute; left:22px; top:auto; bottom:0; width:150px; height:178px; margin:0; padding:0; border:0; background:transparent; cursor:pointer; pointer-events:auto; outline:none; filter:drop-shadow(0 9px 8px rgba(65,80,143,.16)); }
+#zcc-desktop-pet .zcc-pet-character img { display:block; width:142px; height:178px; object-fit:contain; object-position:center bottom; transition:opacity .16s,transform .2s; animation:zccPetFloat 3.2s ease-in-out infinite; }
+#zcc-desktop-pet .zcc-pet-character:hover img { transform:scale(1.055) rotate(-3deg); }
+#zcc-desktop-pet .zcc-pet-character span { position:absolute; right:-2px; bottom:6px; padding:2px 8px; border-radius:999px; color:#fff; background:linear-gradient(135deg,#8e9bdc,#b09acb); border:2px solid #fff; font-size:10px; box-shadow:0 2px 7px rgba(86,80,140,.2); }
+#zcc-desktop-pet .zcc-pet-character[data-expression="working"] img { animation:zccPetWork 1.4s ease-in-out infinite; }
+#zcc-desktop-pet .zcc-pet-character[data-expression="urgent"] img { animation:zccPetUrgent .5s ease-in-out infinite; }
+#zcc-desktop-pet .zcc-pet-character[data-expression="celebrate"] img { animation:zccPetCelebrate 1s ease-in-out infinite; }
+#zcc-desktop-pet .zcc-pet-character[data-expression="encourage"] img { animation:zccPetEncourage 1.8s ease-in-out infinite; }
+#zcc-desktop-pet .zcc-pet-character.is-working::after { content:'•••'; position:absolute; right:-5px; top:3px; color:#8e8ac1; font-size:22px; letter-spacing:1px; animation:zccPetDots 1s infinite; }
+#zcc-desktop-pet.is-dragging .zcc-pet-character img { animation-play-state:paused; }
+#zcc-desktop-pet.is-dragging .zcc-pet-bubble { box-shadow:0 12px 32px rgba(69,76,140,.24); }
+#zcc-desktop-pet .zcc-pet-character.is-interacting img { animation:zccPetPlay .7s ease-in-out 3; }
+#zcc-desktop-pet .zcc-pet-character.is-interacting::before { content:'♡'; position:absolute; left:4px; top:-8px; color:#ef9aba; font-size:28px; font-weight:700; animation:zccPetHeart 1.4s ease-in-out infinite; }
+/* 鼠标悬停小泷后，五类提示按钮和切换小泷按钮沿人物右侧圆弧展开；离开保留3秒，滑入按钮持续显示 */
+#zcc-desktop-pet .zcc-pet-hints { position:absolute; inset:0; z-index:6; opacity:0; visibility:hidden; pointer-events:none; transition:opacity .18s ease,visibility .18s ease; }
+#zcc-desktop-pet.is-hints-visible .zcc-pet-hints { opacity:1; visibility:visible; }
+#zcc-desktop-pet .zcc-pet-hint { position:absolute; width:40px; height:40px; padding:0; border:1px solid rgba(255,255,255,.95); border-radius:50%; background:linear-gradient(145deg,#fff,#f1ebff); color:#7562b5; box-shadow:0 5px 15px rgba(83,69,139,.22); font-size:18px; line-height:38px; text-align:center; cursor:pointer; pointer-events:none; opacity:0; transform:scale(.65); transition:transform .18s ease,opacity .18s ease,box-shadow .18s ease; }
+#zcc-desktop-pet.is-hints-visible .zcc-pet-hint { pointer-events:auto; opacity:1; transform:scale(1); }
+#zcc-desktop-pet .zcc-pet-hint:nth-child(1) { left:154px; bottom:142px; }
+#zcc-desktop-pet .zcc-pet-hint:nth-child(2) { left:192px; bottom:122px; }
+#zcc-desktop-pet .zcc-pet-hint:nth-child(3) { left:216px; bottom:88px; }
+#zcc-desktop-pet .zcc-pet-hint:nth-child(4) { left:214px; bottom:50px; }
+#zcc-desktop-pet .zcc-pet-hint:nth-child(5) { left:188px; bottom:18px; }
+#zcc-desktop-pet .zcc-pet-hint:nth-child(6) { left:150px; bottom:0; }
+#zcc-desktop-pet .zcc-pet-hint:not(:disabled):hover { transform:scale(1.12); box-shadow:0 7px 19px rgba(122,90,180,.32); }
+#zcc-desktop-pet .zcc-pet-hint:disabled, #zcc-desktop-pet.is-hints-visible .zcc-pet-hint:disabled { opacity:.35; filter:grayscale(.55); cursor:default; }
+#zcc-desktop-pet .zcc-pet-hint.is-active { color:#fff; background:linear-gradient(135deg,#8d7de1,#d18fc4); box-shadow:0 0 0 3px rgba(210,169,234,.28),0 7px 19px rgba(122,90,180,.3); }
+#zcc-desktop-pet .zcc-pet-outfit-switch { color:#9a5e9f; background:linear-gradient(145deg,#fff7fd,#f8dff3); font-size:19px; }
+#zcc-desktop-pet .zcc-pet-bubble { z-index:4; }
+#zcc-desktop-pet .zcc-pet-character { z-index:3; }
+@keyframes zccPetFloat { 0%,100% { transform:translateY(0) rotate(-1deg); } 50% { transform:translateY(-4px) rotate(1deg); } }
+@keyframes zccPetWork { 0%,100% { transform:translateY(0) rotate(-2deg); } 50% { transform:translateY(-3px) rotate(2deg); } }
+@keyframes zccPetUrgent { 0%,100% { transform:translateX(-2px) rotate(-2deg); } 50% { transform:translateX(2px) rotate(2deg); } }
+@keyframes zccPetCelebrate { 0%,100% { transform:translateY(0) rotate(-2deg); } 50% { transform:translateY(-9px) rotate(2deg); } }
+@keyframes zccPetEncourage { 0%,100% { transform:translateY(0) rotate(0); } 50% { transform:translateY(-4px) rotate(-3deg); } }
+@keyframes zccPetDots { 0%,100% { opacity:.25; } 50% { opacity:1; } }
+@keyframes zccPetPlay { 0%,100% { transform:translateY(0) rotate(-2deg); } 50% { transform:translateY(-8px) rotate(3deg) scale(1.04); } }
+@keyframes zccPetHeart { 0%,100% { opacity:.35; transform:translateY(4px) scale(.85) rotate(-8deg); } 50% { opacity:1; transform:translateY(-8px) scale(1.12) rotate(8deg); } }
+@media (max-width:700px) { #zcc-desktop-pet { transform:scale(.84); transform-origin:right top; } }

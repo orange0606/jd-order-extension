@@ -256,13 +256,16 @@ async function loadSettings() {
     document.getElementById('setting-auto-confirm-bind-order').checked = settings.autoConfirmBindOrder === true;
     document.getElementById('setting-after-sale-bind').checked = settings.afterSaleBindShow !== false; // 默认开启
     document.getElementById('setting-canceled-assoc').checked = settings.canceledAssocCheck !== false;
+    document.getElementById('setting-desktop-pet-enabled').checked = settings.desktopPetEnabled !== false;
+    document.getElementById('setting-desktop-pet-task-visible').checked = settings.desktopPetTaskVisible === true; // 默认不显示在任务列表
 
     // 未登录或账号停用：自动化功能强制关闭，且不允许打开（定时任务面板另有独立登录限制）
     const gatedIds = [
       'setting-auto-sync', 'setting-notification',
       'setting-canceled-assoc', 'setting-assist-associate', 'setting-auto-confirm-virtual',
       'setting-auto-confirm-bind-order',
-      'setting-block-soldout', 'setting-soldout-compat'
+      'setting-block-soldout', 'setting-soldout-compat',
+      'setting-desktop-pet-enabled', 'setting-desktop-pet-task-visible'
     ];
     let loggedIn = true;
     try {
@@ -291,7 +294,9 @@ async function saveSettings() {
     canceledAssocCheck: document.getElementById('setting-canceled-assoc').checked,
     autoConfirmVirtual: document.getElementById('setting-auto-confirm-virtual').checked,
     autoConfirmBindOrder: document.getElementById('setting-auto-confirm-bind-order').checked,
-    afterSaleBindShow: document.getElementById('setting-after-sale-bind').checked
+    afterSaleBindShow: document.getElementById('setting-after-sale-bind').checked,
+    desktopPetEnabled: document.getElementById('setting-desktop-pet-enabled').checked,
+    desktopPetTaskVisible: document.getElementById('setting-desktop-pet-task-visible').checked
   };
   // 先读取现有设置合并（保留 shopId/lastShipTime 等字段），直接写入 storage
   // 直接写入 storage 比发消息给 service-worker 更可靠（避免 SW 休眠导致延迟）

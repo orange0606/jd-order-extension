@@ -6,7 +6,7 @@
  */
 const ZHICHACHA_CONFIG = {
   // ====== 插件版本号（更新插件时同步修改，用于检测新版本） ======
-  version: '2.0.1',
+  version: '3.0.1',
   // 后端API接口地址（最后不要加斜杠）
   apiBaseUrl: 'http://81.71.9.134/api',
   // 本地开发调试时解开下面这行，注释上面线上地址
@@ -14,6 +14,8 @@ const ZHICHACHA_CONFIG = {
 
   // 后台管理页面地址（末尾保留斜杠，代码会拼接 #/路由）
   adminUrl: 'http://81.71.9.134/zhichacha/',
+  // 本地开发调试时解开下面这行，注释上面线上地址
+  // adminUrl: 'http://localhost:8080/',
 
   // 风险检测页面地址（点击跨店订单跳转）
   riskSearchUrl: 'http://81.71.9.134/zhichacha/#/riskSearch',

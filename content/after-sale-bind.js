@@ -20,7 +20,12 @@
     } catch (e) { pluginLoggedIn = false; }
   }
   refreshPluginLogin();
-  setInterval(refreshPluginLogin, 10000); // 登录/退出后10秒内自动生效
+  // 性能：改用 storage 变化事件驱动登录态，去掉每10秒轮询
+  try {
+    chrome.storage.onChanged.addListener(function (changes, area) {
+      if (area === 'local' && changes.zhichacha_token) refreshPluginLogin();
+    });
+  } catch (e) {}
   // 轻提示（顶部居中，2.5秒消失）
   function zccToast(msg) {
     var el = document.createElement('div');
@@ -44,15 +49,16 @@
     }
     try {
       chrome.runtime.sendMessage({ type: 'ZCC_FRAME_FETCH', method: d.method, url: d.url, headers: d.headers, body: d.body }, function (resp) {
-        void chrome.runtime.lastError;
+        var runtimeError = chrome.runtime.lastError;
         reply({
           type: 'ZCC_XHR_PROXY_RESULT', id: d.id,
           ok: !!(resp && resp.ok), status: (resp && resp.status) || 0,
-          headers: (resp && resp.headers) || [], body: (resp && resp.body) || ''
+          headers: (resp && resp.headers) || [], body: (resp && resp.body) || '',
+          error: (resp && resp.error) || (runtimeError && runtimeError.message) || ''
         });
       });
     } catch (err) {
-      reply({ type: 'ZCC_XHR_PROXY_RESULT', id: d.id, ok: false });
+      reply({ type: 'ZCC_XHR_PROXY_RESULT', id: d.id, ok: false, error: String((err && err.message) || err) });
     }
   });
 
@@ -187,6 +193,65 @@
       }
     } catch (e) {}
     return '';
+  }
+
+  // ---------- 读取退货物流悬浮提示并携带到中转仓 ----------
+  function readReturnWaybill() {
+    var tips = document.querySelectorAll('.jd-tooltip__popper, [role="tooltip"], .el-tooltip__popper');
+    var found = '';
+    for (var i = 0; i < tips.length; i++) {
+      var el = tips[i];
+      try {
+        var style = window.getComputedStyle ? window.getComputedStyle(el) : el.style;
+        if (style && (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0')) continue;
+        var rect = el.getBoundingClientRect();
+        if (!rect || (!rect.width && !rect.height)) continue;
+        var text = String(el.textContent || '').replace(/\s+/g, ' ').trim();
+        if (!text || !/退货|物流|运单|包裹/.test(text)) continue;
+        // 优先按标签取值，避免同提示里的服务单号/订单号被误当成物流单号
+        var labelled = text.match(/(?:退货物流单号|退货快递单号|退货单号|包裹运单号|物流单号|运单号)\s*[：:]\s*([A-Za-z0-9-]{6,40})/i);
+        var jd = text.match(/JD[A-Za-z0-9]{6,}/i);
+        if (labelled || jd) found = (labelled && labelled[1]) || (jd && jd[0]) || '';
+      } catch (e) {}
+    }
+    return found;
+  }
+  function dispatchReturnHover(trigger, leave) {
+    if (!trigger) return;
+    var events = leave ? ['mouseleave', 'mouseout'] : ['mouseover', 'mouseenter', 'mousemove'];
+    events.forEach(function (name) {
+      try { trigger.dispatchEvent(new MouseEvent(name, { bubbles: name !== 'mouseenter' && name !== 'mouseleave', view: window })); } catch (e) {}
+    });
+  }
+  function withReturnPrefill(url, prefill) {
+    try {
+      var u = new URL(url);
+      var orderId = String(prefill && prefill.orderId || '').replace(/\D/g, '');
+      var waybill = String(prefill && prefill.waybill || '').trim().replace(/[^A-Za-z0-9-]/g, '');
+      if (orderId) u.searchParams.set('zcc_order_id', orderId);
+      if (waybill) u.searchParams.set('zcc_package_waybill', waybill);
+      return u.href;
+    } catch (e) { return url; }
+  }
+  function openReturnModal(card, url, orderId, done) {
+    var prefill = { orderId: orderId || getOrderId(card), waybill: readReturnWaybill() };
+    var trigger = card.querySelector('.shop-logistics-info-refer-wrap') || card.querySelector('[prop="logisticsInfo"] .jd-tooltip__trigger');
+    var opened = false, timer = null, timeout = null;
+    function finish() {
+      if (opened) return;
+      opened = true;
+      if (timer) clearInterval(timer);
+      if (timeout) clearTimeout(timeout);
+      prefill.waybill = prefill.waybill || readReturnWaybill();
+      dispatchReturnHover(trigger, true);
+      openOrderModal(withReturnPrefill(url, prefill));
+      if (done) done();
+    }
+    if (prefill.waybill || !trigger) { finish(); return; }
+    // 京东物流信息需要悬浮后才渲染tooltip：自动触发悬浮，最多等700ms，读不到也正常打开并带入订单号
+    dispatchReturnHover(trigger, false);
+    timer = setInterval(function () { if (readReturnWaybill()) finish(); }, 100);
+    timeout = setTimeout(finish, 700);
   }
 
   // ---------- 渲染关联单条 ----------
@@ -358,7 +423,12 @@
         btn.addEventListener('click', function (e) {
           e.preventDefault();
           e.stopPropagation();
-          openOrderModal(btn.getAttribute('data-url') || '');
+          if (btn.getAttribute('data-zcc-opening')) return;
+          btn.setAttribute('data-zcc-opening', '1');
+          // 携带当前行的订单编号和悬浮提示中的退货物流单号，打开add表单后自动填写
+          openReturnModal(card, btn.getAttribute('data-url') || '', orderId, function () {
+            btn.removeAttribute('data-zcc-opening');
+          });
         }, true);
       });
     }
@@ -538,6 +608,8 @@
       '<div class="zcc-afs-modal-header" style="flex:0 0 34px;display:flex;align-items:center;gap:8px;padding:0 10px;' +
       'background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;cursor:move;user-select:none;font-size:13px;">' +
       '  <span class="zcc-afs-modal-title-text" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(modalTitle(url)) + '</span>' +
+      '  <button type="button" class="zcc-afs-modal-refresh" title="刷新当前小窗页面"' +
+      '    style="border:none;background:rgba(255,255,255,.2);color:#fff;border-radius:3px;cursor:pointer;font-size:12px;height:22px;padding:0 8px;">↻ 刷新</button>' +
       '  <button type="button" class="zcc-afs-modal-open-tab" data-url="' + esc(url) + '" title="在新标签页打开"' +
       '    style="border:none;background:rgba(255,255,255,.2);color:#fff;border-radius:3px;cursor:pointer;font-size:12px;height:22px;padding:0 8px;">↗ 新标签</button>' +
       '  <button type="button" class="zcc-afs-modal-close" title="关闭"' +
@@ -579,6 +651,11 @@
       modal.remove();
       // 关闭弹窗：只移除对应站点的Cookie注入规则，不做Cookie清除/恢复
       embedOff(modal);
+    });
+    modal.querySelector('.zcc-afs-modal-refresh').addEventListener('click', function () {
+      // 刷新仍走原加载链路，保留京巴士srcdoc代理、自动填单和内嵌登录态
+      var currentUrl = modal.querySelector('.zcc-afs-modal-open-tab').getAttribute('data-url') || url;
+      loadModalFrame(modal, currentUrl);
     });
     modal.querySelector('.zcc-afs-modal-open-tab').addEventListener('click', function () {
       window.open(this.getAttribute('data-url'), '_blank', 'noopener');

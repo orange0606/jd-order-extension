@@ -19,7 +19,10 @@
       headers: msg.headers || {}
     };
     if (msg.body && opt.method !== 'GET' && opt.method !== 'HEAD') opt.body = msg.body;
-    fetch(msg.url, opt).then(function (r) {
+    var requestUrl = msg.url;
+    try { requestUrl = new URL(msg.url, location.href).href; } catch (e) {}
+    // Promise起点包住fetch初始化：360若同步抛错也必须进入catch并sendResponse，不能让异步消息通道无回包关闭
+    Promise.resolve().then(function () { return fetch(requestUrl, opt); }).then(function (r) {
       return r.arrayBuffer().then(function (buf) { return { r: r, buf: buf }; });
     }).then(function (o) {
       var hs = [];
@@ -31,6 +34,7 @@
       }
       sendResponse({ ok: true, status: o.r.status, url: o.r.url, headers: hs, body: btoa(bin) });
     }).catch(function (e) {
+      try { console.error('[智查查-京巴士第一方代理] 请求失败:', opt.method, requestUrl, e); } catch (err) {}
       sendResponse({ ok: false, error: String(e && e.message || e) });
     });
     return true; // 异步 sendResponse

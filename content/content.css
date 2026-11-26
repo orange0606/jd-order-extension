@@ -1209,12 +1209,16 @@ button.orange-zcc-report-btn:active {
 #zcc-task-panel .zcc-tp-tip { color:#c0c4cc; font-size:11px; }
 #zcc-task-panel .zcc-task-status { margin-top:8px; padding-top:8px; border-top:1px dashed #ececf5; font-size:12px; line-height:1.6; }
 #zcc-task-panel .zcc-task-status.is-checking { color:#e6a23c; }
-#zcc-task-panel .zcc-task-status.is-ok { color:#67c23a; }
+#zcc-task-panel .zcc-task-status.is-ok, #zcc-task-panel .zcc-task-status.is-done { color:#67c23a; }
 #zcc-task-panel .zcc-task-status.is-warn { color:#f56c6c; }
 #zcc-task-panel .zcc-task-status.is-error { color:#f56c6c; }
 #zcc-task-panel .zcc-tp-view { display:flex; align-items:center; gap:4px; font-size:11px; color:#909399; cursor:pointer; white-space:nowrap; flex:0 0 auto; }
 #zcc-task-panel .zcc-tp-divider { margin:12px 0; border-top:1px solid #f0f0f7; }
 #zcc-task-panel .zcc-tp-footer { margin-top:12px; font-size:11px; color:#b6bcc9; text-align:center; }
+/* 底部任务执行详情显示开关：默认勾选，取消后仅显示任务标题行 */
+#zcc-task-panel .zcc-tp-display-options { margin-top:12px; padding-top:10px; border-top:1px solid #f0f0f7; display:flex; justify-content:center; }
+#zcc-task-panel .zcc-tp-display-options label { display:flex; align-items:center; gap:5px; font-size:11px; color:#909399; cursor:pointer; user-select:none; }
+#zcc-task-panel .zcc-tp-display-options input { width:13px; height:13px; margin:0; accent-color:#7a5af8; cursor:pointer; }
 /* 可爱执行提醒卡片：淡紫粉渐变 + emoji轻摆动，随每分钟调度更新 */
 #zcc-task-panel .zcc-tp-greeting { display:flex; align-items:center; gap:10px; margin-top:10px; margin-bottom:10px; padding:10px 12px; border-radius:12px; background:linear-gradient(135deg,#f1f4ff 0%,#f8f0ff 55%,#fff3f8 100%); border:1px solid rgba(122,90,248,.14); box-shadow:0 4px 14px rgba(122,90,248,.08); cursor:pointer; transition:background .3s ease,box-shadow .3s ease,border-color .3s ease; }
 #zcc-task-panel .zcc-tp-greeting:hover { box-shadow:0 6px 18px rgba(122,90,248,.16); }

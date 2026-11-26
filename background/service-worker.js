@@ -204,7 +204,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
  * 处理抓取到的订单数据
  */
 async function handleOrdersScraped(payload, sender) {
-  const { orders, importList, url, timestamp } = payload;
+  const { orders, importList, url, timestamp, syncId, statusSummary } = payload;
   
   console.log(`[Background] 收到 ${orders.length} 条订单数据，准备同步到服务器`);
 
@@ -214,6 +214,8 @@ async function handleOrdersScraped(payload, sender) {
   if (isLoggedIn && importList && importList.length > 0) {
     try {
       syncResult = await syncOrdersToServer(importList);
+      syncResult.syncId = syncId || '';
+      syncResult.statusSummary = statusSummary || {};
       console.log('[Background] 同步结果:', syncResult);
       
       // 通知content同步结果
@@ -225,7 +227,7 @@ async function handleOrdersScraped(payload, sender) {
       }
     } catch (e) {
       console.error('同步失败:', e);
-      syncResult = { success: false, message: e.message };
+      syncResult = { success: false, message: e.message, syncId: syncId || '', statusSummary: statusSummary || {} };
       if (sender.tab?.id) {
         chrome.tabs.sendMessage(sender.tab.id, {
           type: 'SYNC_RESULT',
@@ -419,8 +421,9 @@ async function syncOrdersToServer(ordersToSync = null) {
     // 更新最后同步时间
     await chrome.storage.local.set({ 'jd_last_sync_time': Date.now() });
 
-    const resultMsg = data.data 
-      ? `新增${data.data.insert}条，更新${data.data.update}条` 
+    const resultMsg = data.data
+      ? `新增${data.data.insert}条，更新${data.data.update}条` +
+        (data.data.skipCanceled ? `，${data.data.skipCanceled}条首次出现的已取消订单未入库` : '')
       : `${ordersToSync.length}条`;
     console.log(`[Background] 同步成功: ${resultMsg}`);
 
@@ -429,6 +432,11 @@ async function syncOrdersToServer(ordersToSync = null) {
       synced: ordersToSync.length,
       insert: data.data?.insert || 0,
       update: data.data?.update || 0,
+      skipCanceled: data.data?.skipCanceled || 0,
+      skipExisting: data.data?.skipExisting || 0,
+      skipPending: data.data?.skipPending || 0,
+      processOrderNos: data.data?.processOrderNos || [],
+      skippedCanceledOrderNos: data.data?.skippedCanceledOrderNos || [],
       msg: data.msg
     };
   } catch (e) {
@@ -835,6 +843,108 @@ async function submitReport(payload) {
         });
         return true; // 异步 sendResponse
       }
+      // 已取消订单采集：统一开独立标签页读取真实订单页，读完自动关闭；
+      // 由 SW 主动轮询读取，不使用 iframe，避免框架内渲染限制和后台定时器节流影响
+      if (msg && msg.type === "ZCC_COLLECT_CANCELED_IDS") {
+        var cFinished = false;
+        var cTabId = null;
+        var cListener = null;
+        var cTimer = null;
+        var cPollTimer = null;
+        var cTries = 0;
+        var cLastSignature = '';
+        var cStable = 0;
+        function cFinish(resp) {
+          if (cFinished) return;
+          cFinished = true;
+          try { if (cListener) chrome.tabs.onUpdated.removeListener(cListener); } catch (e) {}
+          cListener = null;
+          if (cPollTimer) { clearTimeout(cPollTimer); cPollTimer = null; }
+          if (cTimer) { clearTimeout(cTimer); cTimer = null; }
+          var idToClose = cTabId;
+          cTabId = null;
+          if (idToClose != null) {
+            try { chrome.tabs.remove(idToClose, function () { void chrome.runtime.lastError; }); } catch (e) {}
+          }
+          sendResponse(resp);
+        }
+        function cPoll() {
+          if (cFinished || cTabId == null) return;
+          chrome.tabs.sendMessage(cTabId, { type: "ZCC_COLLECT_CANCELED_PAGE" }, function (resp) {
+            if (cFinished) return;
+            if (chrome.runtime.lastError) resp = null;
+            cTries++;
+            if (resp && resp.ok) {
+              if (resp.orders && resp.orders.length) {
+                // 连续两次读取到同一组订单号才完成，避免切到已取消标签前读取旧列表
+                var signature = resp.orders.map(function (o) { return o.oid; }).sort().join(',');
+                if (signature === cLastSignature) cStable++; else { cLastSignature = signature; cStable = 0; }
+                if (cStable >= 1) { cFinish({ ok: true, orders: resp.orders, ids: resp.ids, url: resp.url }); return; }
+              } else { cLastSignature = ''; cStable = 0; }
+              if (cTries >= 18) {
+                if (resp.emptyList) cFinish({ ok: true, orders: [], ids: [], url: resp.url });
+                else cFinish({ ok: false, error: "已取消订单页已打开，但列表没有稳定渲染出来（可能被登录或风控拦截）" });
+                return;
+              }
+            } else if (cTries >= 18) {
+              cFinish({ ok: false, error: "后台采集页加载超时，未读取到订单列表" });
+              return;
+            }
+            cPollTimer = setTimeout(cPoll, 2000);
+          });
+        }
+        function cBegin() {
+          if (cFinished) return;
+          setTimeout(function () { cPoll(); }, 4000); // 页面 complete 后再等4秒让列表渲染
+        }
+        try {
+          var collectUrl = "https://shop.jd.com/jdm/trade/orders/order-list?tabType=canceled&zcc_collect=1";
+          function cOnTab(tab) {
+            if (chrome.runtime.lastError || !tab || tab.id == null) {
+              cFinish({ ok: false, error: "无法打开已取消订单采集页" });
+              return;
+            }
+            cTabId = tab.id;
+            cListener = function (tabId, info) {
+              if (tabId !== cTabId || cFinished) return;
+              if (info.status === "complete") {
+                try { chrome.tabs.onUpdated.removeListener(cListener); } catch (e) {}
+                cListener = null;
+                cBegin();
+              }
+            };
+            chrome.tabs.onUpdated.addListener(cListener);
+            cTimer = setTimeout(function () {
+              cFinish({ ok: false, error: "已取消订单采集超时（50秒）" });
+            }, 50000);
+            // 页面可能在监听器挂上之前就已加载完成，主动补查一次状态
+            chrome.tabs.get(cTabId, function (t) {
+              if (cFinished || !t) return;
+              if (t.status === "complete" && cListener) {
+                try { chrome.tabs.onUpdated.removeListener(cListener); } catch (e) {}
+                cListener = null;
+                cBegin();
+              }
+            });
+          }
+          if (msg.visible && chrome.windows && chrome.windows.create) {
+            // 勾选“视图”：使用真正的顶层浏览器小窗，不用iframe；读取结束关闭唯一标签时小窗一并关闭
+            chrome.windows.create({ url: collectUrl, type: "popup", width: 600, height: 700, left: 80, top: 60, focused: true }, function (win) {
+              if (chrome.runtime.lastError || !win || !win.tabs || !win.tabs.length) {
+                // 360等浏览器不支持popup时退回落到前台标签页，不让任务中断
+                chrome.tabs.create({ url: collectUrl, active: true }, cOnTab);
+                return;
+              }
+              cOnTab(win.tabs[0]);
+            });
+          } else {
+            chrome.tabs.create({ url: collectUrl, active: false }, cOnTab); // 默认后台小标签，不抢占当前页面
+          }
+        } catch (e) {
+          cFinish({ ok: false, error: String((e && e.message) || e) });
+        }
+        return true; // 异步 sendResponse
+      }
     });
   }
 
@@ -1182,6 +1292,19 @@ async function submitReport(payload) {
       trimSearch();
       new MutationObserver(trimSearch).observe(document.documentElement, { childList: true, subtree: true });
     }
+    // srcdoc 弹层的 location.href 是 about:srcdoc，不能作为相对请求地址的基准；优先取文档baseURI，仍无效时回到京巴士站点
+    var bridgeBase = String(location.href || '');
+    if (!/^https:\/\/zzc\.jingbashi\.com\//.test(bridgeBase)) {
+      try { bridgeBase = String(document.baseURI || ''); } catch (e) { bridgeBase = ''; }
+      if (!/^https:\/\/zzc\.jingbashi\.com\//.test(bridgeBase)) bridgeBase = 'https://zzc.jingbashi.com/returns';
+    }
+    var bridgeOrigin = new URL(bridgeBase).origin;
+    var bridgeOrderPrefill = { orderId: '', waybill: '' };
+    try {
+      var prefillParams = new URL(bridgeBase).searchParams;
+      bridgeOrderPrefill.orderId = String(prefillParams.get('zcc_order_id') || '').replace(/\D/g, '');
+      bridgeOrderPrefill.waybill = String(prefillParams.get('zcc_package_waybill') || '').replace(/[^A-Za-z0-9-]/g, '');
+    } catch (e) {}
     // 弹层（layer）嵌套 iframe：跨站直载会丢登录 Cookie（360 不拦嵌套文档请求）。
     // 监听新出现的同源 iframe，第一方代取 HTML 后 srcdoc 回填，并注入同样的桥（表单内 XHR 也走代理）。
     var __bridgeSrc = '';
@@ -1195,8 +1318,8 @@ async function submitReport(payload) {
           var src = f.getAttribute('src') || '';
           if (!src || src === 'about:blank') continue;
           var absSrc;
-          try { absSrc = new URL(src, location.href).href; } catch (e) { continue; }
-          if (absSrc.indexOf(location.origin) !== 0) continue;
+          try { absSrc = new URL(src, bridgeBase).href; } catch (e) { continue; }
+          try { if (new URL(absSrc).origin !== bridgeOrigin) continue; } catch (e) { continue; }
           f.setAttribute('data-zcc-proxied', '1');
           f.setAttribute('allow', 'clipboard-read; clipboard-write'); // 弹层内读剪贴板快速填单
           (function (frame, url) {
@@ -1206,7 +1329,11 @@ async function submitReport(payload) {
               var html = '';
               try { html = new TextDecoder('utf-8').decode(b64Bytes(d.body)); } catch (e) {}
               if (html) {
-                var tag = '<script>(' + __bridgeSrc + ')();<\/script>';
+                var prefillTag = '';
+                if ((bridgeOrderPrefill.orderId || bridgeOrderPrefill.waybill) && /\/returns\/add/.test(url)) {
+                  prefillTag = '<script>window.__ZCC_ORDER_PREFILL=' + JSON.stringify(bridgeOrderPrefill) + ';<\/script>';
+                }
+                var tag = prefillTag + '<script>(' + __bridgeSrc + ')();<\/script>';
                 if (/<head[^>]*>/i.test(html)) html = html.replace(/<head[^>]*>/i, function (m) { return m + tag; });
                 else html = tag + html;
                 frame.srcdoc = html;
@@ -1221,6 +1348,8 @@ async function submitReport(payload) {
       childList: true, subtree: true, attributes: true, attributeFilter: ['src']
     });
     var seq = 0, cbs = {};
+    // 每层iframe独立编号会从1开始，嵌套弹层与列表页容易撞号；带随机层标识可确保保存回包传到真正的发起层
+    var bridgeId = 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
     function b64Bytes(b64) {
       var bin = atob(b64 || '');
       var u = new Uint8Array(bin.length);
@@ -1251,16 +1380,53 @@ async function submitReport(payload) {
         }
       } catch (err) {}
     });
-    function proxy(method, url, headers, body, cb) {
-      var id = ++seq;
-      cbs[id] = cb;
-      parent.postMessage({ type: 'ZCC_XHR_PROXY', id: id, method: method, url: url, headers: headers, body: body || null }, '*');
+    function normalizeProxyHeaders(headers) {
+      var out = {};
+      if (typeof Headers !== 'undefined' && headers instanceof Headers) {
+        headers.forEach(function (v, k) { out[k] = v; });
+      } else {
+        Object.keys(headers || {}).forEach(function (k) { out[k] = headers[k]; });
+      }
+      return out;
     }
-    function abs(u) { try { return new URL(u, location.href).href; } catch (e) { return u; } }
-    function isLocal(u) { try { return new URL(u, location.href).origin === location.origin; } catch (e) { return false; } }
+    function encodeFormField(k, v) { return encodeURIComponent(k) + '=' + encodeURIComponent(v == null ? '' : String(v)); }
+    function normalizeProxyBody(body, headers) {
+      // FormData 经过 runtime 消息会退化成普通对象；保存前先序列化为后端可识别的 application/x-www-form-urlencoded
+      if (typeof FormData !== 'undefined' && body instanceof FormData) {
+        var pairs = [];
+        body.forEach(function (v, k) { pairs.push(encodeFormField(k, v)); });
+        var hasType = Object.keys(headers).some(function (k) { return k.toLowerCase() === 'content-type'; });
+        if (!hasType) headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
+        return pairs.join('&');
+      }
+      if (typeof URLSearchParams !== 'undefined' && body instanceof URLSearchParams) {
+        var hasSearchType = Object.keys(headers).some(function (k) { return k.toLowerCase() === 'content-type'; });
+        if (!hasSearchType) headers['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
+        return body.toString();
+      }
+      return body || null;
+    }
+    function proxy(method, url, headers, body, cb) {
+      var id = bridgeId + ':' + (++seq);
+      var normalizedHeaders = normalizeProxyHeaders(headers);
+      var normalizedBody = normalizeProxyBody(body, normalizedHeaders);
+      cbs[id] = cb;
+      parent.postMessage({ type: 'ZCC_XHR_PROXY', id: id, method: method, url: url, headers: normalizedHeaders, body: normalizedBody }, '*');
+    }
+    function abs(u) {
+      var raw = String(u || '');
+      // 原add表单未写action时，FastAdmin使用location.href；直载是/returns/add，srcdoc则会变成about:srcdoc，需还原真实保存地址
+      if (/^about:(?:srcdoc|blank)$/i.test(raw)) {
+        var isFillForm = window.__ZCC_QF_ROLE === 'fill';
+        try { isFillForm = isFillForm || !!document.querySelector('#add-form'); } catch (e) {}
+        if (isFillForm) return bridgeOrigin + '/returns/add?dialog=1';
+      }
+      try { return new URL(raw, bridgeBase).href; } catch (e) { return u; }
+    }
+    function isLocal(u) { try { return new URL(abs(u), bridgeBase).origin === bridgeOrigin; } catch (e) { return false; } }
     function ProxyXHR() {
       var self = this;
-      this.readyState = 0; this.status = 0; this.responseText = ''; this.response = ''; this.responseType = '';
+      this.readyState = 0; this.status = 0; this.statusText = ''; this.responseText = ''; this.response = ''; this.responseType = '';
       this._h = {}; this._rh = [];
       this.onreadystatechange = null; this.onload = null; this.onerror = null; this.onloadend = null;
       this.open = function (m, u) { self._m = m; self._u = abs(u); self.readyState = 1; };
@@ -1274,8 +1440,13 @@ async function submitReport(payload) {
       this.abort = function () {};
       this.send = function (body) {
         proxy(self._m || 'GET', self._u, self._h, body, function (d) {
-          if (!d.ok) { self.status = 0; self.readyState = 4; if (self.onerror) self.onerror(); if (self.onloadend) self.onloadend(); return; }
-          self.status = d.status; self._rh = d.headers || [];
+          if (!d.ok) {
+            self.status = 0; self.statusText = d.error || 'error'; self.readyState = 4;
+            self.responseText = d.error || ''; self.response = self.responseText;
+            try { console.error('[智查查-京巴士代理] 请求失败:', self._m, self._u, self.statusText); } catch (e) {}
+            if (self.onerror) self.onerror(); if (self.onloadend) self.onloadend(); return;
+          }
+          self.status = d.status; self.statusText = d.status >= 200 && d.status < 300 ? 'OK' : ''; self._rh = d.headers || [];
           var txt = '';
           try { txt = new TextDecoder('utf-8').decode(b64Bytes(d.body)); } catch (e) {}
           self.responseText = txt;
@@ -1296,13 +1467,93 @@ async function submitReport(payload) {
       if (!isLocal(rawUrl)) return nativeFetch.apply(this, arguments);
       return new Promise(function (resolve, reject) {
         proxy(opt.method || 'GET', abs(rawUrl), opt.headers || {}, opt.body || null, function (d) {
-          if (!d.ok) { reject(new TypeError('zcc proxy failed')); return; }
+          if (!d.ok) { reject(new TypeError(d.error || 'zcc proxy failed')); return; }
           var h = new Headers();
           (d.headers || []).forEach(function (p) { h.append(p[0], p[1]); });
           resolve(new Response(b64Bytes(d.body), { status: d.status, headers: h }));
         });
       });
     };
+
+    // FastAdmin弹层底部“确定”在外层，实际通过 Form.api.submit → Fast.api.ajax → jQuery.ajax 提交。
+    // 对该保存接口直接接管 $.ajax，避免跨iframe的jQuery传输器与ProxyXHR差异导致静默error；其它接口仍走原生/ProxyXHR。
+    function patchJQueryReturnsSave() {
+      var jq = window.jQuery;
+      if (!jq || !jq.ajax) return false;
+      if (jq.__zccReturnsSaveBridge) return true;
+      jq.__zccReturnsSaveBridge = true;
+      var nativeAjax = jq.ajax;
+      jq.ajax = function (options) {
+        options = options || {};
+        var method = String(options.type || options.method || 'GET').toUpperCase();
+        var requestUrl = abs(options.url || bridgeBase);
+        if (method !== 'POST' || !isLocal(requestUrl) || !/\/returns\/add(?:\?|$)/.test(requestUrl)) {
+          return nativeAjax.apply(this, arguments);
+        }
+        var callbackContext = options.context || options;
+        var requestHeaders = normalizeProxyHeaders(options.headers || {});
+        var hasContentType = Object.keys(requestHeaders).some(function (k) { return k.toLowerCase() === 'content-type'; });
+        if (!hasContentType) requestHeaders['Content-Type'] = 'application/x-www-form-urlencoded; charset=UTF-8';
+        if (!requestHeaders['X-Requested-With']) requestHeaders['X-Requested-With'] = 'XMLHttpRequest';
+        if (!requestHeaders['Accept']) requestHeaders['Accept'] = 'application/json, text/javascript, */*; q=0.01';
+        var finished = false;
+        var fakeXhr = {
+          readyState: 0, status: 0, statusText: '', responseText: '', response: null, responseJSON: undefined, _rh: [],
+          abort: function () { finished = true; this.readyState = 4; this.statusText = 'abort'; },
+          setRequestHeader: function (n, v) { requestHeaders[n] = v; },
+          getAllResponseHeaders: function () {
+            return this._rh.map(function (p) { return p[0] + ': ' + p[1]; }).join('\r\n');
+          },
+          getResponseHeader: function (n) {
+            n = String(n).toLowerCase();
+            for (var i = 0; i < this._rh.length; i++) {
+              if (String(this._rh[i][0]).toLowerCase() === n) return this._rh[i][1];
+            }
+            return null;
+          }
+        };
+        if (typeof options.beforeSend === 'function' && options.beforeSend.call(callbackContext, fakeXhr, options) === false) return fakeXhr;
+        try { console.log('[智查查-售后保存] 开始代理POST:', requestUrl); } catch (e) {}
+        proxy('POST', requestUrl, requestHeaders, options.data || null, function (d) {
+          if (finished) return;
+          finished = true;
+          fakeXhr.readyState = 4;
+          fakeXhr.status = d.status || 0;
+          fakeXhr._rh = d.headers || [];
+          var text = '';
+          try { text = new TextDecoder('utf-8').decode(b64Bytes(d.body)); } catch (e) {}
+          fakeXhr.responseText = text;
+          var httpOk = !!(d.ok && ((fakeXhr.status >= 200 && fakeXhr.status < 300) || fakeXhr.status === 304));
+          var parsed = text;
+          var parseError = null;
+          if (httpOk && String(options.dataType || '').toLowerCase() === 'json') {
+            try { parsed = JSON.parse(text); } catch (e) { parseError = e; }
+          }
+          try { console.log('[智查查-售后保存] 代理回包:', fakeXhr.status, d.error || '', text.slice(0, 500)); } catch (e) {}
+          var textStatus = 'success';
+          if (httpOk && !parseError) {
+            fakeXhr.statusText = 'OK';
+            fakeXhr.response = parsed;
+            if (String(options.dataType || '').toLowerCase() === 'json') fakeXhr.responseJSON = parsed;
+            if (typeof options.success === 'function') options.success.call(callbackContext, parsed, 'success', fakeXhr);
+          } else {
+            textStatus = parseError ? 'parsererror' : 'error';
+            fakeXhr.statusText = parseError ? 'parsererror' : (d.error || 'error');
+            fakeXhr.response = text;
+            if (typeof options.error === 'function') options.error.call(callbackContext, fakeXhr, textStatus, parseError || d.error || 'error');
+          }
+          if (typeof options.complete === 'function') options.complete.call(callbackContext, fakeXhr, textStatus);
+        });
+        return fakeXhr;
+      };
+      return true;
+    }
+    var jqPatchTries = 0;
+    var jqPatchTimer = setInterval(function () {
+      jqPatchTries++;
+      if (patchJQueryReturnsSave() || jqPatchTries > 100) clearInterval(jqPatchTimer);
+    }, 100);
+    if (patchJQueryReturnsSave()) clearInterval(jqPatchTimer);
   }
 
   // 内嵌站点配置：拼多多采购单 / 京巴士中转仓（zzc+pay 同属 jingbashi.com）
@@ -1388,6 +1639,53 @@ async function submitReport(payload) {
     chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
       if (msg && msg.type === "ZCC_PDD_EMBED_ON") { embedCookieRule(true, function () { sendResponse({ ok: true }); }, PDD_EMBED_SITE); return true; }
       if (msg && msg.type === "ZCC_PDD_EMBED_OFF") embedCookieRule(false, null, PDD_EMBED_SITE);
+      // ===== 台账网页桥接（内容脚本 ledger-bridge.js 转发，无需 externally_connectable/插件ID）=====
+      // 拼多多小窗登录态开/关（复用插件小窗同款机制；此处 embedCookieRule 在作用域内）
+      if (msg && msg.type === 'ZCC_LEDGER_PDD_ON') { embedCookieRule(true, function () { sendResponse({ ok: true }); }, PDD_EMBED_SITE); return true; }
+      if (msg && msg.type === 'ZCC_LEDGER_PDD_OFF') { embedCookieRule(false, null, PDD_EMBED_SITE); sendResponse({ ok: true }); return; }
+      // 京巴士关联单查询 → 供台账自动回填采购单/快递单/快递公司
+      if (msg && msg.type === 'ZCC_LEDGER_LOOKUP') {
+        var orderNo = String(msg.orderNo || '').trim();
+        if (!orderNo) { sendResponse({ ok: false, error: '缺少订单号' }); return; }
+        var filter = JSON.stringify({ order_id: orderNo });
+        var op = JSON.stringify({ order_id: 'in' });
+        var url = 'https://pay.jingbashi.com/back.php/order/status/index' +
+          '?addtabs=1&sort=buy_time&order=desc&offset=0&limit=200' +
+          '&filter=' + encodeURIComponent(filter) + '&op=' + encodeURIComponent(op) + '&_=' + Date.now();
+        fetch(url, {
+          method: 'GET',
+          credentials: 'include',
+          headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json, text/plain, */*' }
+        }).then(function (r) { return r.text(); })
+          .then(function (text) {
+            if (text.trim().charAt(0) === '<') { sendResponse({ ok: false, notLogin: true, error: '京巴士未登录' }); return; }
+            var parsed = JSON.parse(text);
+            if (parsed && parsed.code === 0 &&
+                (String(parsed.msg || '').indexOf('登录') !== -1 || String(parsed.url || '').indexOf('login') !== -1)) {
+              sendResponse({ ok: false, notLogin: true, error: '京巴士未登录' }); return;
+            }
+            var rows = (parsed && parsed.rows) || [];
+            var out = [];
+            var seen = {};
+            rows.forEach(function (row) {
+              var extra = row.extra && Array.isArray(row.extra.buy) ? row.extra.buy : [];
+              [row].concat(extra).forEach(function (r) {
+                var sn = String(r.buy_order_id || '');
+                if (!sn || seen[sn]) return;
+                seen[sn] = 1;
+                out.push({
+                  buy_order_id: sn,
+                  buy_express_id: String(r.buy_express_id || ''),
+                  buy_express_company: String(r.buy_express_company || ''),
+                  buy_platform_text: String(r.buy_platform_text || '')
+                });
+              });
+            });
+            sendResponse({ ok: true, rows: out });
+          })
+          .catch(function (e) { sendResponse({ ok: false, error: String((e && e.message) || e) }); });
+        return true; // 异步 sendResponse
+      }
       if (msg && msg.type === "ZCC_ZZC_EMBED_ON") {
         // 先确保DNR规则生效，再attach/放行iframe请求
         var ztab = sender && sender.tab ? sender.tab.id : null;
@@ -1406,8 +1704,8 @@ async function submitReport(payload) {
       // 小窗网络桥中继：iframe 内 XHR/fetch → 京东页 → 这里 → 第一方 zzc 标签页代请求
       if (msg && msg.type === "ZCC_FRAME_FETCH") {
         zzcProxyFetch(msg.url, { method: msg.method, headers: msg.headers, body: msg.body }, function (resp) {
-          // /returns/add 表单页（srcdoc 弹层）：注入快速填单脚本并强制填写模式
-          if (resp && resp.ok && /\/returns\/add/.test(String(msg.url || ''))) {
+          // 仅GET表单文档注入快速填单；POST /returns/add 是保存请求，其JSON成功响应必须原样立即回传，不能再走HTML注入
+          if (String(msg.method || 'GET').toUpperCase() === 'GET' && resp && resp.ok && /\/returns\/add/.test(String(msg.url || ''))) {
             withQfSource(function (src) {
               try {
                 var html = b64ToText(resp.body);
@@ -1436,6 +1734,109 @@ async function submitReport(payload) {
         return true; // 异步 sendResponse
       }
     });
+  // 台账小窗跳转完整管理页：域名统一读取 config.js 的 adminUrl，路由仅允许台账页面
+  chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
+    if (!msg || msg.type !== 'ZCC_LEDGER_OPEN_ADMIN') return;
+    if (msg.path !== '/expressLedger') { sendResponse({ success: false, msg: '页面不在允许范围' }); return; }
+    const base = (typeof ZHICHACHA_CONFIG !== 'undefined' && ZHICHACHA_CONFIG.adminUrl) || 'http://localhost:8080/';
+    const url = base.replace(/\/?$/, '/') + '#/expressLedger';
+    chrome.tabs.create({ url: url }, function () {
+      const err = chrome.runtime.lastError;
+      sendResponse(err ? { success: false, msg: err.message } : { success: true, url: url });
+    });
+    return true;
+  });
+  // 京东交易后台台账小窗统一API代理：复用插件登录token，只允许白名单内的台账、店铺及桌宠今日统计接口
+  chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
+    if (!msg || msg.type !== 'ZCC_LEDGER_API') return;
+    const allowed = /^\/(ledger\/(list|counts|lookup|add|edit|del)|shop\/list|dashboard\/shop-stats)$/;
+    if (!allowed.test(String(msg.path || ''))) { sendResponse({ success: false, msg: '接口不在允许范围' }); return; }
+    (async function () {
+      const authInfo = await getCurrentUser();
+      if (!authInfo.token) throw new Error('请先登录智查查');
+      const method = String(msg.method || 'GET').toUpperCase();
+      let url = CONFIG.apiBaseUrl + msg.path;
+      if (msg.query) {
+        const qs = new URLSearchParams();
+        Object.keys(msg.query).forEach(function (k) {
+          if (msg.query[k] !== '' && msg.query[k] !== null && msg.query[k] !== undefined) qs.set(k, msg.query[k]);
+        });
+        const text = qs.toString(); if (text) url += (url.indexOf('?') >= 0 ? '&' : '?') + text;
+      }
+      const resp = await fetch(url, {
+        method: method,
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authInfo.token },
+        body: method === 'GET' ? undefined : JSON.stringify(msg.body || {})
+      });
+      const data = await resp.json().catch(function () { return { code: -1, msg: '服务返回格式错误' }; });
+      if (!resp.ok) throw new Error(data.msg || ('HTTP ' + resp.status));
+      sendResponse({ success: data.code === 0, data: data.data, msg: data.msg || '', code: data.code });
+    })().catch(function (e) { sendResponse({ success: false, msg: String((e && e.message) || e) }); });
+    return true;
+  });
   }
 })();
 
+/* ===== 小泷京准通广告费用静默采集 =====
+   使用屏幕内正常尺寸的小窗/小标签让京准通SPA完整渲染，读取总花费后立即关闭；查不到则静默结束，不影响其他巡检 */
+(function () {
+  var adCostJob = null;
+  var AD_COST_URL = 'https://jzt.jd.com/home/#/index';
+
+  function finishAdCostJob(result) {
+    var job = adCostJob;
+    if (!job || job.finished) return;
+    job.finished = true;
+    adCostJob = null;
+    if (job.timer) clearTimeout(job.timer);
+    if (job.tabId != null) {
+      try { chrome.tabs.remove(job.tabId, function () { void chrome.runtime.lastError; }); } catch (e) {}
+    }
+    try { job.sendResponse({ success: true, data: result || { found: false } }); } catch (e) {}
+  }
+
+  function openAdCostPage() {
+    var url = AD_COST_URL + (AD_COST_URL.indexOf('?') >= 0 ? '&' : '?') + 'zcc_ad_collect=' + Date.now();
+    function onTab(tab) {
+      if (!adCostJob || adCostJob.finished) return;
+      if (chrome.runtime.lastError || !tab || tab.id == null) { finishAdCostJob({ found: false }); return; }
+      adCostJob.tabId = tab.id;
+      adCostJob.timer = setTimeout(function () { finishAdCostJob({ found: false, reason: '京准通页面读取超时' }); }, 45000);
+    }
+    try {
+      if (chrome.windows && chrome.windows.create) {
+        // 120x80且移到屏幕外会导致部分京准通页面不渲染；改成屏幕内正常小窗，非聚焦显示、读完自动关闭
+        chrome.windows.create({ url: url, type: 'popup', width: 560, height: 680, left: 80, top: 60, focused: false }, function (win) {
+          if (chrome.runtime.lastError || !win || !win.tabs || !win.tabs.length) {
+            // 360等不支持popup时退到小标签；前台加载可确保SPA渲染，采集结束会立即关闭
+            chrome.tabs.create({ url: url, active: true }, onTab);
+            return;
+          }
+          onTab(win.tabs[0]);
+        });
+      } else {
+        chrome.tabs.create({ url: url, active: true }, onTab);
+      }
+    } catch (e) {
+      try { chrome.tabs.create({ url: url, active: true }, onTab); }
+      catch (err) { finishAdCostJob({ found: false, reason: '无法打开京准通采集小窗' }); }
+    }
+  }
+
+  chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
+    if (!msg) return;
+    if (msg.type === 'ZCC_AD_COST_QUERY') {
+      if (adCostJob) { sendResponse({ success: true, data: { found: false, busy: true } }); return; }
+      adCostJob = { sendResponse: sendResponse, tabId: null, timer: null, finished: false };
+      openAdCostPage();
+      return true; // 等待采集结果或45秒超时
+    }
+    if (msg.type === 'ZCC_AD_COST_COLLECTED') {
+      if (!adCostJob || !sender.tab || sender.tab.id !== adCostJob.tabId) return;
+      var cost = Number(msg.cost);
+      if (msg.found && isFinite(cost) && cost >= 0) finishAdCostJob({ found: true, cost: cost, url: String(msg.url || '') });
+      else if (msg.found === false) finishAdCostJob({ found: false, reason: String(msg.reason || '未读取到京准通总花费') });
+      // 不回复采集脚本：结果统一返回给发起巡检的小泷页面
+    }
+  });
+})();

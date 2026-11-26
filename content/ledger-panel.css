@@ -1,0 +1,102 @@
+/* 京东交易后台台账入口与可拖动、缩放小窗 */
+#zcc-ledger-entry{position:fixed;left:14px;top:auto;bottom:150px;z-index:999998;width:52px;height:62px;border:0;border-radius:10px;background:linear-gradient(145deg,#554bd2,#7367e8);color:#fff;box-shadow:0 8px 24px rgba(61,52,160,.28);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-family:"Microsoft YaHei",sans-serif}#zcc-ledger-entry span{font-size:21px;line-height:1}#zcc-ledger-entry b{font-size:12px;font-weight:600}#zcc-ledger-entry:hover{transform:translateY(-2px);box-shadow:0 10px 28px rgba(61,52,160,.38)}
+#zcc-ledger-list-panel,#zcc-ledger-form-panel{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:1000000;background:#f6f7fb;border:1px solid #dfe2eb;border-radius:10px;box-shadow:0 18px 65px rgba(20,24,40,.28);font:12px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;color:#303647;overflow:hidden;resize:both;box-sizing:border-box;min-width:480px;min-height:420px;max-width:96vw;max-height:94vh;display:flex;flex-direction:column}#zcc-ledger-list-panel{width:600px;height:700px;display:none}#zcc-ledger-form-panel{width:720px;height:600px;min-width:520px}#zcc-ledger-list-panel *,#zcc-ledger-form-panel *{box-sizing:border-box}#zcc-ledger-list-panel button,#zcc-ledger-form-panel button{font-family:inherit}
+.zcc-ledger-head{height:44px;flex:0 0 44px;padding:0 13px;display:flex;align-items:center;justify-content:space-between;background:#fff;border-bottom:1px solid #e7e9f0;cursor:move;user-select:none}.zcc-ledger-head strong{font-size:14px;color:#292d3a}.zcc-ledger-head>div{display:flex;gap:7px}.zcc-ledger-head button{height:27px;padding:0 9px;border:1px solid #dcdfe8;background:#fff;border-radius:5px;color:#596175;cursor:pointer}.zcc-ledger-head button:hover{color:#5148c5;border-color:#aaa4e4}.zcc-ledger-head button[data-action=close],.zcc-ledger-head button[data-form-action=close]{font-size:20px;padding:0;width:28px;line-height:20px}
+.zcc-ledger-tabs{display:flex;gap:5px;padding:9px 11px 6px;flex:0 0 auto}.zcc-ledger-tabs button{flex:1;border:1px solid #e0e3eb;background:#fff;color:#687085;padding:6px 4px;border-radius:6px;cursor:pointer}.zcc-ledger-tabs button.on{color:#5047c5;border-color:#aaa4e5;background:#efedff;font-weight:700}.zcc-ledger-tabs b{margin-left:4px;font-size:11px}
+.zcc-ledger-filters{display:grid;grid-template-columns:1.6fr 1fr .8fr .8fr auto auto;gap:5px;padding:4px 11px 9px;flex:0 0 auto}.zcc-ledger-filters input,.zcc-ledger-filters select,.zcc-lg-field input,.zcc-lg-field select,.zcc-lg-field textarea{width:100%;border:1px solid #dcdfe7;border-radius:5px;background:#fff;color:#3b4252;outline:none;font-size:12px}.zcc-ledger-filters input,.zcc-ledger-filters select{height:28px;padding:0 7px;min-width:0}.zcc-ledger-filters input:focus,.zcc-ledger-filters select:focus,.zcc-lg-field input:focus,.zcc-lg-field select:focus,.zcc-lg-field textarea:focus{border-color:#756be0;box-shadow:0 0 0 2px rgba(85,75,210,.08)}.zcc-ledger-filters button{border:1px solid #dcdfe7;background:#fff;border-radius:5px;color:#596175;padding:0 8px;cursor:pointer}.zcc-ledger-filters button[data-action=search]{background:#554bd2;color:#fff;border-color:#554bd2}
+.zcc-ledger-list{flex:1;min-height:0;overflow:auto;padding:2px 11px 10px}.zcc-ledger-empty{text-align:center;color:#9299a9;padding:80px 10px}.zcc-ledger-empty.is-error{color:#c0443c}.zcc-ledger-card{position:relative;background:#fff;border:1px solid #e2e5ec;border-radius:7px;margin:7px 0;padding:9px 10px 8px;overflow:hidden}.zcc-ledger-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:#665bd4}.zcc-ledger-card.ug-中:before{background:#d2962c}.zcc-ledger-card.ug-高:before{background:#c34a43}.zcc-lg-card-top{display:flex;align-items:center;gap:6px}.zcc-lg-shop{font-weight:700;max-width:190px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-right:auto}.zcc-lg-type,.zcc-lg-status,.zcc-lg-urgency{padding:1px 6px;border-radius:4px;background:#f0f1f5;white-space:nowrap;font-size:11px}.zcc-lg-status.st-待处理{color:#a56a10;background:#fff3df}.zcc-lg-status.st-已处理{color:#2d5cb9;background:#eaf1ff}.zcc-lg-status.st-已完结{color:#25734d;background:#e8f5ed}.zcc-lg-urgency{color:#747b8d}.zcc-lg-order{display:flex;gap:7px;margin-top:6px;color:#7b8292}.zcc-lg-order b{color:#4740b7;font-family:Consolas,monospace}.zcc-lg-order span{margin-left:auto;font-size:11px}.zcc-lg-goods{margin-top:5px;color:#4a5263;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.zcc-lg-fields{margin-top:5px}.zcc-lg-fields>div{display:flex;gap:7px;padding:2px 0}.zcc-lg-fields label{flex:0 0 66px;color:#8a91a1}.zcc-lg-fields span{word-break:break-all}.zcc-lg-fields button{border:0;background:none;color:#454e61;padding:0;text-align:left;cursor:pointer}.zcc-lg-card-foot{display:flex;justify-content:space-between;align-items:center;border-top:1px dashed #e2e4eb;margin-top:6px;padding-top:6px;color:#8b92a2}.zcc-lg-card-foot button{border:1px solid #dcdfea;background:#fff;color:#575f72;border-radius:4px;padding:3px 8px;margin-left:5px;cursor:pointer}.zcc-lg-card-foot button:hover{color:#5047c5;border-color:#aaa4e5}.zcc-lg-card-foot button.danger:hover{color:#c0443c;border-color:#e2aaa6}
+.zcc-ledger-pager{height:38px;flex:0 0 38px;background:#fff;border-top:1px solid #e6e8ef;display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:0 11px;color:#7b8292}.zcc-ledger-pager span:first-child{margin-right:auto}.zcc-ledger-pager button{border:1px solid #dcdfe7;background:#fff;border-radius:4px;padding:3px 8px;cursor:pointer}.zcc-ledger-pager button:disabled{opacity:.4;cursor:not-allowed}
+.zcc-ledger-form-body{flex:1;min-height:0;overflow:auto;padding:14px}.zcc-lg-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}.zcc-lg-field{display:flex;flex-direction:column;gap:4px}.zcc-lg-field>span{font-size:12px;color:#697185}.zcc-lg-field input,.zcc-lg-field select{height:31px;padding:0 9px}.zcc-lg-field textarea{padding:7px 9px;resize:vertical}.zcc-lg-field input:disabled{background:#f1f2f6;color:#8a91a0}.zcc-lg-remark{grid-column:1/-1}.zcc-lg-lookup{margin-top:11px;background:#eeedff;border:1px solid #dcd8fb;color:#665fac;border-radius:6px;padding:8px 10px;line-height:1.6}.zcc-ledger-form-foot{flex:0 0 47px;display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:0 14px;background:#fff;border-top:1px solid #e5e7ee}.zcc-ledger-form-foot button{border:1px solid #d9dce5;background:#fff;border-radius:5px;padding:6px 16px;cursor:pointer}.zcc-ledger-form-foot button.primary{background:#554bd2;border-color:#554bd2;color:#fff}.zcc-ledger-form-foot button:disabled{opacity:.6}
+.zcc-order-ledger-btn{display:inline-flex!important;align-items:center;justify-content:center;width:27px;height:25px;margin:3px 0 3px 7px;padding:0;border:1px solid #c9c4f1!important;border-radius:5px!important;background:#f3f1ff!important;color:#554bc3!important;font-size:13px!important;line-height:22px!important;cursor:pointer!important;white-space:nowrap}.zcc-order-ledger-btn:hover{background:#e7e3ff!important;border-color:#9f96e3!important}
+#zcc-ledger-toast{position:fixed;left:50%;top:22px;transform:translate(-50%,-12px);z-index:1000002;background:#283043;color:#fff;border-radius:6px;padding:9px 16px;box-shadow:0 8px 24px rgba(0,0,0,.2);font:13px "Microsoft YaHei",sans-serif;opacity:0;pointer-events:none;transition:.2s}#zcc-ledger-toast.is-show{opacity:1;transform:translate(-50%,0)}#zcc-ledger-toast.is-error{background:#bd413a}
+@media(max-width:650px){#zcc-ledger-list-panel,#zcc-ledger-form-panel{min-width:94vw}.zcc-ledger-filters{grid-template-columns:1fr 1fr 1fr}.zcc-lg-form-grid{grid-template-columns:1fr}.zcc-lg-remark{grid-column:auto}}
+
+/* 复刻前端已确认的浅色紧凑台账：渐变标题、白底卡片、顶部紧急程度色条、细分隔线与轻量标签 */
+#zcc-ledger-list-panel{background:#f5f7fb;border:1px solid rgba(35,39,47,.1);border-radius:12px}
+#zcc-ledger-list-panel .zcc-ledger-head{height:58px;flex-basis:58px;padding:0 15px;border:0;background:linear-gradient(120deg,#4a46c9 0%,#6459d8 58%,#0e7fa8 135%);color:#fff;box-shadow:0 8px 20px -12px rgba(74,70,201,.45)}
+#zcc-ledger-list-panel .zcc-ledger-head strong{color:#fff;font-size:16px;font-weight:700;letter-spacing:.3px}
+#zcc-ledger-list-panel .zcc-ledger-head button{border:0;background:rgba(255,255,255,.94);color:#4a46c9;font-weight:600;border-radius:6px}
+#zcc-ledger-list-panel .zcc-ledger-tabs{margin:10px 11px 4px;padding:4px;background:#eceff5;border:1px solid rgba(35,39,47,.06);border-radius:9px;gap:4px}
+#zcc-ledger-list-panel .zcc-ledger-tabs button{border:0;background:transparent;color:#6f7c91;border-radius:6px;padding:6px 4px}
+#zcc-ledger-list-panel .zcc-ledger-tabs button.on{background:#fff;color:#4a46c9;box-shadow:0 2px 8px rgba(35,39,47,.08)}
+#zcc-ledger-list-panel .zcc-ledger-filters{padding:6px 11px 10px}
+#zcc-ledger-list-panel .zcc-ledger-filters input,#zcc-ledger-list-panel .zcc-ledger-filters select{border-color:#e1e5ed;background:#fff;border-radius:6px}
+#zcc-ledger-list-panel .zcc-ledger-filters button[data-action=search]{background:#4a46c9;border-color:#4a46c9;border-radius:6px}
+#zcc-ledger-list-panel .zcc-ledger-list{padding:2px 11px 12px}
+#zcc-ledger-list-panel .zcc-ledger-card{border:1px solid rgba(35,39,47,.08);border-radius:8px;margin:8px 0;padding:0;background:#fff;box-shadow:0 2px 8px rgba(35,39,47,.035)}
+#zcc-ledger-list-panel .zcc-ledger-card:before{left:0;right:0;top:0;bottom:auto;width:auto;height:3px;background:linear-gradient(90deg,#4a46c9,#0e7fa8)}
+#zcc-ledger-list-panel .zcc-ledger-card.ug-中:before{background:linear-gradient(90deg,#b77a16,#e3aa43)}
+#zcc-ledger-list-panel .zcc-ledger-card.ug-高:before{background:linear-gradient(90deg,#c0453c,#b4485e)}
+#zcc-ledger-list-panel .zcc-lg-card-top{padding:10px 11px 3px;gap:7px}
+#zcc-ledger-list-panel .zcc-lg-shop{font-size:13px;color:#23272f}
+#zcc-ledger-list-panel .zcc-lg-type,#zcc-ledger-list-panel .zcc-lg-status,#zcc-ledger-list-panel .zcc-lg-urgency{font-size:11px;border-radius:5px;padding:1px 7px}
+#zcc-ledger-list-panel .zcc-lg-type{color:#a83a32;background:rgba(192,69,60,.08)}
+#zcc-ledger-list-panel .zcc-lg-status.st-待处理{color:#9b610e;background:#fff4e5}
+#zcc-ledger-list-panel .zcc-lg-status.st-已处理{color:#2d5bd8;background:#eaf2fc}
+#zcc-ledger-list-panel .zcc-lg-status.st-已完结{color:#0a6b3c;background:#e9f6ee}
+#zcc-ledger-list-panel .zcc-lg-urgency{color:#6f7c91;background:#f5f6f8}
+#zcc-ledger-list-panel .zcc-lg-order,#zcc-ledger-list-panel .zcc-lg-goods,#zcc-ledger-list-panel .zcc-lg-fields{margin-left:11px;margin-right:11px}
+#zcc-ledger-list-panel .zcc-lg-order{padding-bottom:5px;border-bottom:1px solid rgba(35,39,47,.07)}
+#zcc-ledger-list-panel .zcc-lg-goods{padding:5px 0;color:#454e5e;font-size:12.5px}
+#zcc-ledger-list-panel .zcc-lg-fields{padding:2px 0 5px}
+#zcc-ledger-list-panel .zcc-lg-fields label{color:#6f7c91}
+#zcc-ledger-list-panel .zcc-lg-card-foot{margin:0;padding:6px 11px 7px;background:#fff;border-top:1px dashed rgba(35,39,47,.14)}
+#zcc-ledger-list-panel .zcc-lg-card-foot button{border-color:#e3e6ed;border-radius:5px;color:#6f7c91}
+#zcc-ledger-form-panel .zcc-ledger-head{height:45px;flex-basis:45px;background:#fff;border-bottom:1px solid #f0f2f5}
+#zcc-ledger-form-panel .zcc-ledger-form-body{background:#fff;padding:12px 16px}
+#zcc-ledger-form-panel .zcc-lg-field>span{font-size:12px;color:#606266}
+#zcc-ledger-form-panel .zcc-lg-field input,#zcc-ledger-form-panel .zcc-lg-field select{height:28px;border-color:#dcdfe6;border-radius:4px;font-size:12px}
+#zcc-ledger-list-panel .zcc-lg-lookup{background:#f4f7ff;border-color:rgba(74,70,201,.14);color:#7d88a0;border-radius:8px}
+
+/* 前端台账卡片的订单顶栏、商品行、物流底栏结构（仅控件改为插件原生按钮） */
+#zcc-ledger-list-panel .zcc-ledger-head>div:first-child{display:flex;flex-direction:column;gap:1px}
+#zcc-ledger-list-panel .zcc-ledger-head small{font-size:10px;color:rgba(255,255,255,.76);font-weight:400}
+#zcc-ledger-list-panel .zcc-ledger-filters{grid-template-columns:1.7fr 1fr .8fr .8fr;gap:6px}
+#zcc-ledger-list-panel .zcc-ledger-filters [data-query="keyword"]{grid-column:span 2}
+#zcc-ledger-list-panel .zcc-ledger-filters [data-query="shopId"]{grid-column:span 2}
+#zcc-ledger-list-panel .zcc-lg-card-top{flex-wrap:wrap;padding:9px 11px 4px;gap:5px 7px;border-bottom:1px solid rgba(35,39,47,.06)}
+#zcc-ledger-list-panel .zcc-lg-shop{font-size:12px;max-width:170px;margin-right:0}
+#zcc-ledger-list-panel .zcc-lg-order-copy{border:0;background:none;color:#4a46c9;font:11px Consolas,"Microsoft YaHei",monospace;cursor:pointer;padding:0;white-space:nowrap}
+#zcc-ledger-list-panel .zcc-lg-time{margin-left:auto;color:#6f7c91;font-size:11px;white-space:nowrap}
+#zcc-ledger-list-panel .zcc-lg-edit,#zcc-ledger-list-panel .zcc-lg-delete,#zcc-ledger-list-panel .zcc-lg-finish{border:1px solid #e3e6ed;border-radius:4px;background:#fff;padding:1px 5px;color:#6f7c91;font-size:11px;cursor:pointer}
+#zcc-ledger-list-panel .zcc-lg-finish{color:#0a6b3c;border-color:#b9dfc9}
+#zcc-ledger-list-panel .zcc-lg-finish:disabled{opacity:.5;cursor:not-allowed}
+#zcc-ledger-list-panel .zcc-lg-delete{color:#c0453c}
+#zcc-ledger-list-panel .zcc-lg-goods{padding:5px 0 6px;border-bottom:1px solid rgba(35,39,47,.05)}
+#zcc-ledger-list-panel .zcc-lg-fields>div{display:grid;grid-template-columns:35px 1fr;gap:5px;min-width:0;padding:2px 0}
+#zcc-ledger-list-panel .zcc-lg-fields label{flex:none;font-size:11px;color:#6f7c91}
+#zcc-ledger-list-panel .zcc-lg-fields span,#zcc-ledger-list-panel .zcc-lg-fields button{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#zcc-ledger-list-panel .zcc-lg-card-foot{gap:6px;font-size:11px;flex-wrap:wrap}
+#zcc-ledger-list-panel .zcc-lg-card-foot>div{display:flex;align-items:center;gap:5px}
+#zcc-ledger-list-panel .zcc-lg-remark-text{color:#a35d1b;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 与前端 960px 双栏台账弹窗一致：左侧迷你表单，右侧京巴士关联单快速复制 */
+#zcc-ledger-form-panel{width:900px;height:650px;min-width:680px;min-height:480px}
+#zcc-ledger-form-panel .zcc-ledger-form-body{display:grid;grid-template-columns:minmax(0,1fr) 265px;gap:14px;padding:12px 14px;overflow:hidden}
+#zcc-ledger-form-panel .zcc-lg-form-main{overflow:auto;min-width:0;padding-right:3px}
+#zcc-ledger-form-panel .zcc-lg-form-grid{gap:9px 12px}
+#zcc-ledger-form-panel .zcc-lg-field>span{font-size:12px;color:#606266}
+#zcc-ledger-form-panel .zcc-lg-lookup{background:#f4f7ff;border-color:rgba(74,70,201,.14);color:#7d88a0;border-radius:8px}
+#zcc-ledger-form-panel .zcc-lg-jbs-panel{border:1px solid #e5e8f1;background:#f8f9fd;border-radius:9px;padding:12px;overflow:auto;min-width:0}
+#zcc-ledger-form-panel .zcc-lg-jbs-panel h4{margin:0;color:#303133;font-size:14px}
+#zcc-ledger-form-panel .zcc-lg-jbs-panel>p{margin:5px 0 12px;color:#8a94a6;font-size:11px;line-height:1.6}
+#zcc-ledger-form-panel .zcc-lg-jbs-row{padding:10px;margin-bottom:9px;background:#fff;border:1px solid #e5e8f1;border-radius:7px}
+#zcc-ledger-form-panel .zcc-lg-jbs-title{font-weight:700;color:#4a46c9;margin-bottom:7px;display:flex;justify-content:space-between}
+#zcc-ledger-form-panel .zcc-lg-jbs-title span{font-size:10px;font-weight:400;color:#b7791f;background:#fff4df;padding:1px 5px;border-radius:4px}
+#zcc-ledger-form-panel .zcc-lg-jbs-field{margin:6px 0}
+#zcc-ledger-form-panel .zcc-lg-jbs-field label{display:block;color:#909399;font-size:11px;margin-bottom:2px}
+#zcc-ledger-form-panel .zcc-lg-jbs-field button{width:100%;border:1px solid #e4e7ed;border-radius:4px;background:#f7f8fc;text-align:left;color:#454e61;padding:4px 6px;cursor:pointer;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#zcc-ledger-form-panel .zcc-lg-jbs-field button:hover{border-color:#9289e1;color:#4a46c9;background:#f3f1ff}
+#zcc-ledger-form-panel .zcc-lg-jbs-empty{text-align:center;color:#909399;padding:32px 4px;font-size:12px}
+#zcc-ledger-form-panel .zcc-lg-field-wide{grid-column:1/-1}
+
+/* 台账列表固定左上角首次出现，层级高于定时任务列表；拖动后保留用户调整的位置 */
+#zcc-ledger-list-panel,#zcc-ledger-form-panel{z-index:2147483647}
+#zcc-ledger-list-panel{left:14px;top:14px;transform:none}
+/* 有值的采购单、发货、补发在同一行显示；无值字段不生成占位 */
+#zcc-ledger-list-panel .zcc-lg-fields{display:flex;align-items:center;gap:10px;padding:5px 0 7px;min-width:0}
+#zcc-ledger-list-panel .zcc-lg-fields>div{display:flex;align-items:center;gap:4px;flex:1 1 0;min-width:0;padding:0}
+#zcc-ledger-list-panel .zcc-lg-fields>div.zcc-lg-field-buy{flex:1.15 1 0}
+#zcc-ledger-list-panel .zcc-lg-fields label{flex:0 0 auto}
+#zcc-ledger-list-panel .zcc-lg-fields button{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#zcc-ledger-list-panel .zcc-lg-field-buy button{color:#4a46c9}
+
