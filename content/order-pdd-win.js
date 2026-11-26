@@ -1,5 +1,6 @@
 /**
  * 订单列表（waitOut/allOrders/hadOut/canceled）：京巴士关联单采购订单号旁加「拼多多小窗」。
+ * 小窗函数在全交易后台注册，供拒收台账调用；自动扫描按钮仍仅限订单列表，避免其他页面重复注入。
  * 页面打开/切换tab后自动扫描（首次延迟5秒，之后每3秒补扫，覆盖懒加载/翻页）。
  * 单号取关联单 <a class="j_buyMsg_orderId"> 的 order_sn，弹窗复用拼多多内嵌登录态机制（ZCC_PDD_EMBED_ON/OFF）。
  */
@@ -135,7 +136,11 @@
   }
 
   // ---------- 关联单扫描：采购订单号后插入小窗按钮 ----------
+  function isOrderListPage() {
+    return location.pathname.indexOf('/jdm/trade/orders/order-list') === 0;
+  }
   function scan() {
+    if (!isOrderListPage()) return; // 全交易后台仅注册小窗函数，自动按钮仍只注入订单列表
     if (!pluginLoggedIn) return; // 插件未登录不注入小窗按钮
     if (document.hidden) return; // 性能：后台标签页不扫描，回到前台由补扫覆盖
     try {

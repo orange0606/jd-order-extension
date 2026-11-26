@@ -6,6 +6,10 @@
   if (window.top !== window.self) return;
   let sent = false;
   let tries = 0;
+  const COLLECTING_TITLE = '正在获取广告费用请勿操作';
+
+  // 静默标签和补采小窗都明确标记当前状态；每次读取时重写，防止京准通SPA覆盖标题
+  document.title = COLLECTING_TITLE;
 
   function parseCost(text) {
     const match = String(text || '').replace(/,/g, '').match(/-?\d+(?:\.\d+)?/);
@@ -51,6 +55,7 @@
 
   function collect() {
     if (sent) return;
+    document.title = COLLECTING_TITLE;
     tries++;
     const cost = readTotalCost();
     if (cost !== null) {
@@ -60,12 +65,9 @@
       } catch (e) {}
       return;
     }
-    // SPA数据可能需要登录或异步加载；未读取到时不发成功结果，40秒后回报失败并由后台静默关闭
-    if (tries < 40) setTimeout(collect, 1000);
-    else {
-      sent = true;
-      try { chrome.runtime.sendMessage({ type: 'ZCC_AD_COST_COLLECTED', found: false, reason: '页面已加载，但未找到总花费金额', url: location.href }); } catch (e) {}
-    }
+    // SPA数据可能需要登录或异步加载；持续每秒读取，由后台按静默标签、100×100和700×700阶段统一升级或超时关闭
+    // 不在内容脚本提前回报最终失败，避免小窗尚未完成补采就被误判为读取失败
+    if (!sent) setTimeout(collect, 1000);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', collect, { once: true });

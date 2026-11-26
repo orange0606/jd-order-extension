@@ -1,12 +1,19 @@
 /**
  * 小泷桌宠：右上角二次元数量巡检助手
- * 10分钟周期由content.js统一调度；本模块负责10秒首巡、回前台重巡和点击人物30秒节流
+ * 10分钟周期由content.js统一调度；本模块负责10秒首巡、回前台2分钟间隔重巡和点击人物30秒节流
  * 未登录智查查时不渲染人物、不启动循环调度、不执行任何巡检数据请求
  * 今日订单和金额严格按当前店铺统计；广告费用由京准通小窗读取后自动关闭
  */
 (function () {
   'use strict';
   if (window.top !== window.self) return;
+  if (!isExtensionContextValid()) return;
+
+  // 插件重载后，旧页面中的内容脚本会失效；所有定时与界面入口先检查上下文，避免继续调用chrome接口报错
+  function isExtensionContextValid() {
+    try { return !!(chrome && chrome.runtime && chrome.runtime.id); }
+    catch (e) { return false; }
+  }
 
   let root = null;
   let messages = [];
@@ -84,7 +91,7 @@
   }
 
   function renderOutfitImage() {
-    if (!root || !petEnabled) return;
+    if (!root || !petEnabled || !isExtensionContextValid()) return;
     if (outfitIndex < 0) outfitIndex = resolvedOutfitIndex();
     const outfit = OUTFITS[outfitIndex];
     const image = root.querySelector('#zcc-pet-image');
@@ -196,15 +203,76 @@
     });
   }
 
+  function withDailyAdCostCache(value) {
+    const result = value || { found: false };
+    const liveCost = Number(result.cost);
+    if (result.found && isFinite(liveCost) && liveCost > 0) {
+      // 只缓存今天实时读取到的非0费用；后续读取失败时也只能回退到同一天的缓存
+      const cache = { cost: liveCost, dateKey: localDateKey(), fetchedAt: Date.now() };
+      try { chrome.storage.local.set({ zcc_ad_cost_daily_cache: cache }); } catch (e) {}
+      return Promise.resolve(Object.assign({}, result, { cost: liveCost, cached: false, fetchedAt: cache.fetchedAt }));
+    }
+    if (result.found) return Promise.resolve(result); // 实时0费用是有效结果，不使用旧的非0缓存覆盖
+    return storageGet('zcc_ad_cost_daily_cache').then(function (st) {
+      const cache = st && st.zcc_ad_cost_daily_cache;
+      const today = localDateKey();
+      const cost = Number(cache && cache.cost);
+      const fetchedToday = cache && cache.dateKey === today && cache.fetchedAt && localDateKey(new Date(Number(cache.fetchedAt))) === today;
+      if (fetchedToday && isFinite(cost) && cost > 0) {
+        return { found: true, cost: cost, cached: true, fetchedAt: Number(cache.fetchedAt) };
+      }
+      return result;
+    });
+  }
+
   function queryAdCost(shop) {
     return new Promise(function (resolve) {
       try {
         chrome.runtime.sendMessage({ type: 'ZCC_AD_COST_QUERY', shopId: shop.shopId || '', shopName: shop.shopName || '' }, function (r) {
-          if (chrome.runtime.lastError) { resolve({ found: false }); return; }
-          resolve((r && r.success && r.data) || { found: false });
+          if (chrome.runtime.lastError) { resolve(withDailyAdCostCache({ found: false })); return; }
+          resolve(withDailyAdCostCache((r && r.success && r.data) || { found: false }));
         });
-      } catch (e) { resolve({ found: false }); }
+      } catch (e) { resolve(withDailyAdCostCache({ found: false })); }
     });
+  }
+
+  function sendRuntimeMessage(message) {
+    return new Promise(function (resolve, reject) {
+      try {
+        chrome.runtime.sendMessage(message, function (response) {
+          if (chrome.runtime.lastError) { reject(new Error(chrome.runtime.lastError.message)); return; }
+          resolve(response);
+        });
+      } catch (e) { reject(e); }
+    });
+  }
+
+  // 只有点击小泷人物进行手动巡检时才实时执行取消单检测；自动巡检只读30分钟独立任务缓存
+  async function queryCanceledAssocCount() {
+    const read = await sendRuntimeMessage({ type: 'ZCC_COLLECT_CANCELED_IDS' });
+    if (!read || !read.ok) throw new Error((read && read.error) || '已取消订单页未读取到列表');
+    const orders = read.orders || (read.ids || []).map(function (oid) { return { oid: oid, remark: '', que: false }; });
+    const ids = orders.map(function (o) { return o.oid; });
+    const foundMap = new Map();
+    for (let i = 0; i < ids.length; i += 50) {
+      const resp = await sendRuntimeMessage({ type: 'ZCC_AFS_BIND_QUERY', orderIds: ids.slice(i, i + 50) });
+      if (resp && resp.notLogin) throw new Error('京巴士未登录，无法查询取消单关联数量');
+      if (!resp || !resp.ok) throw new Error((resp && resp.error) || '取消单关联接口异常');
+      const rows = (resp.data && resp.data.rows) || [];
+      rows.forEach(function (row) {
+        const oid = String(row.order_id || '').trim();
+        if (!oid) return;
+        const extra = row.extra && Array.isArray(row.extra.buy) ? row.extra.buy.length : 0;
+        foundMap.set(oid, (foundMap.get(oid) || 0) + 1 + extra);
+      });
+    }
+    let foundBinds = 0;
+    foundMap.forEach(function (n) { foundBinds += n; });
+    // 备注含“备”的中转仓取消订单也计入提醒；已经查到采购关联单的订单不重复计数
+    const queCount = orders.filter(function (o) { return o.que && !foundMap.has(o.oid); }).length;
+    const count = foundBinds + queCount;
+    try { chrome.storage.local.set({ zcc_task_canceled_assoc_binds: count }); } catch (e) {}
+    return count;
   }
 
   function movePetTo(left, top) {
@@ -282,7 +350,7 @@
   function triggerPetInspection(reason) {
     if (!loginActive) { applySettings(false); return Promise.resolve('未登录智查查，已跳过小泷巡检'); }
     if (running) return Promise.resolve('小泷正在巡检，请稍候');
-    if (typeof window.__zccRunPetTask === 'function') return Promise.resolve(window.__zccRunPetTask());
+    if (typeof window.__zccRunPetTask === 'function') return Promise.resolve(window.__zccRunPetTask(reason));
     return runInspection(reason);
   }
 
@@ -448,7 +516,7 @@
   // 唯一循环调度器：按下一次事件动态睡眠，统一处理消息轮播、空闲互动、跨日换装与固定提示倒计时
   function schedulePetTick(delay) {
     stopPetTick();
-    if (!petEnabled || document.hidden) return;
+    if (!petEnabled || document.hidden || !isExtensionContextValid()) return;
     petTickTimer = setTimeout(function () {
       petTickTimer = null;
       runPetTick();
@@ -456,7 +524,7 @@
   }
 
   function runPetTick() {
-    if (!petEnabled || document.hidden) return;
+    if (!petEnabled || document.hidden || !isExtensionContextValid()) return;
     const now = Date.now();
     if (pinnedMessageIndex >= 0) {
       pinRemaining = Math.max(0, Math.ceil((pinExpiresAt - now) / 1000));
@@ -476,6 +544,7 @@
   }
 
   function ensurePet() {
+    if (!isExtensionContextValid()) return null;
     if (root && document.getElementById('zcc-desktop-pet')) return root;
     root = document.createElement('div');
     root.id = 'zcc-desktop-pet';
@@ -525,8 +594,9 @@
   }
 
   function renderMessage() {
-    if (!petEnabled || interacting) return;
+    if (!petEnabled || interacting || !isExtensionContextValid()) return;
     const pet = ensurePet();
+    if (!pet) return;
     const msg = messages[messageIndex] || {
       title: '小泷来啦～',
       text: '我会乖乖守着数量任务，到时间就自动巡检！',
@@ -558,7 +628,7 @@
     return Number(n || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
-  async function collectData() {
+  async function collectData(reason) {
     const currentShop = await getCurrentShopInfo();
     const tasks = {
       ledger: function () { return api('/ledger/counts').then(function (value) { return { value: value }; }); },
@@ -570,8 +640,10 @@
       },
       adCost: function () { return queryAdCost(currentShop).then(function (value) { return { value: value }; }); },
       canceled: function () {
+        if (reason === 'manual') return queryCanceledAssocCount().then(function (count) { return { value: count }; });
+        // 首巡、回前台、设置变化和每10分钟定时巡检只读独立任务结果，避免高频打开取消单采集页
         return storageGet('zcc_task_canceled_assoc_binds').then(function (st) {
-          return { value: Number(st.zcc_task_canceled_assoc_binds || 0) };
+          return { value: Number(st.zcc_task_canceled_assoc_binds || 0), cached: true };
         });
       }
     };
@@ -593,8 +665,9 @@
   }
 
   async function runInspection(reason) {
+    if (!isExtensionContextValid()) return '插件已更新，请刷新页面后再使用小泷';
     if (running) return '小泷正在巡检，请稍候';
-    running = true; // 登录校验期间也占用防重入锁，避免首巡、回前台和点击并发请求
+    running = true; // 登录校验期间也占用防重入锁，避免首巡、回前台、定时任务和点击并发请求
     const loggedIn = await checkLoginStatus();
     loginActive = loggedIn;
     if (!loggedIn) {
@@ -609,6 +682,7 @@
     if (interactionRestoreTimer) { clearTimeout(interactionRestoreTimer); interactionRestoreTimer = null; }
     if (petEnabled) {
       const pet = ensurePet();
+      if (!pet) { running = false; return '插件已更新，请刷新页面后再使用小泷'; }
       const character = pet.querySelector('#zcc-pet-character');
       character.classList.remove('is-interacting');
       const bubble = pet.querySelector('#zcc-pet-bubble');
@@ -620,7 +694,7 @@
       pet.querySelector('#zcc-pet-meta').textContent = '每10分钟巡检 · 点小泷可立即刷新';
     }
     try {
-      const data = await collectData();
+      const data = await collectData(reason);
       const list = [];
       let canceledCount = 0;
       let pendingCount = 0;
@@ -631,15 +705,18 @@
 
       if (data.canceled && !data.canceled.error) {
         canceledCount = Number(data.canceled.value || 0);
+        const canceledPrefix = data.canceled.cached ? '定时任务缓存：' : '';
         if (canceledCount > 0) {
           list.push({
             level: 4,
             title: '🚨 有取消单还没处理！',
-            text: '还有 ' + canceledCount + ' 个已取消订单存在采购关联或中转仓待处理，快点处理吧，拖久了可能造成货损！'
+            text: canceledPrefix + '还有 ' + canceledCount + ' 个已取消订单存在采购关联或中转仓待处理，快点处理吧，拖久了可能造成货损！'
           });
         } else {
-          list.push({ level: 0, title: '✅ 取消关联单已清零', text: '已取消订单关联数量为 0，目前没有这类紧急事项，表现棒棒哒～' });
+          list.push({ level: 0, title: '✅ 取消关联单已清零', text: canceledPrefix + '已取消订单关联数量为 0，目前没有这类紧急事项，表现棒棒哒～' });
         }
+      } else if (data.canceled && data.canceled.error) {
+        list.push({ level: 1, title: '取消关联单暂未刷新', text: data.canceled.error + '，本次不沿用旧数量。' });
       }
 
       if (data.purchase && !data.purchase.error) {
@@ -691,31 +768,34 @@
       if (data.adCost && !data.adCost.error && data.adCost.value && data.adCost.value.found && data.today && !data.today.error) {
         const adCost = Number(data.adCost.value.cost);
         if (isFinite(adCost) && adCost >= 0) {
+          const adCached = data.adCost.value.cached === true;
           const roi = adCost > 0 ? todayAmount / adCost : null;
           const burnWarning = adCost > 0 && (todayAmount <= 0 || adCost >= todayAmount * 0.2 || roi < 5);
-          adSummary = '广告 ¥' + money(adCost) + (roi === null ? '' : ' / 投产 ' + roi.toFixed(2) + ':1');
+          adSummary = (adCached ? '广告缓存 ¥' : '广告 ¥') + money(adCost) + (roi === null ? '' : ' / 投产 ' + roi.toFixed(2) + ':1');
           if (burnWarning) {
             const ratioText = roi === null ? '' : '，投产比约 ' + roi.toFixed(2) + ':1，已到5:1预警线';
             list.push({
               level: 3,
+              adCached: adCached,
               title: '🔥 广告要烧穿咯！',
-              text: '本店今日成交额 ¥' + money(todayAmount) + '，广告已花 ¥' + money(adCost) + ratioText + '。先别急着加预算，看看高消耗低成交的计划、素材和人群，必要时分批缩量观察。小泷按京准通首页当前总花费与当前店铺今日成交额粗算提醒哦～'
+              text: '本店今日成交额 ¥' + money(todayAmount) + '，广告已花 ¥' + money(adCost) + ratioText + '。先别急着加预算，看看高消耗低成交的计划、素材和人群，必要时分批缩量观察。小泷按' + (adCached ? '今日缓存的京准通总花费' : '京准通首页当前总花费') + '与当前店铺今日成交额粗算提醒哦～'
             });
           } else if (adCost > 0) {
             list.push({
               level: 1,
+              adCached: adCached,
               title: '✅ 广告投产目前正常',
               text: '本店今日成交额 ¥' + money(todayAmount) + '，广告花费 ¥' + money(adCost) + '，投产比约 ' + roi.toFixed(2) + ':1，未触及5:1预警线。继续观察消耗和成交变化就好～'
             });
           } else {
-            list.push({ level: 0, title: '📊 今日广告尚未产生花费', text: '京准通总花费为 ¥0.00，本店今日成交额 ¥' + money(todayAmount) + '，小泷会继续帮你看着～' });
+            list.push({ level: 0, adCached: adCached, title: '📊 今日广告尚未产生花费', text: '京准通总花费为 ¥0.00，本店今日成交额 ¥' + money(todayAmount) + '，小泷会继续帮你看着～' });
           }
         }
       }
 
       if (!list.length) list.push({ level: 0, title: '本轮巡检结束', text: '采购巡检只在待出库Tab执行，其他数量暂时没有读取到哦。' });
       const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-      list.forEach(function (m) { m.meta = '每10分钟巡检 · 更新于 ' + time; });
+      list.forEach(function (m) { m.meta = '每10分钟巡检 · 更新于 ' + time + (m.adCached ? ' · 广告缓存可能有延迟' : ''); });
       setMessages(list);
       return (purchaseSummary ? purchaseSummary + ' · ' : '') + '台账待处理 ' + pendingCount + ' · 取消关联 ' + canceledCount + ' · 今日 ' + todayCount + ' 单 / ¥' + money(todayAmount) + (adSummary ? ' · ' + adSummary : '');
     } finally {
@@ -729,6 +809,7 @@
 
   // 设置与登录态共同决定是否显示人物；巡检任务开关独立控制首巡和回前台自动巡检，不影响用户手动点击
   async function applySettings(triggerRun) {
+    if (!isExtensionContextValid()) { stopPetTick(); return; }
     const revision = ++settingsRevision;
     const result = await Promise.all([storageGet(['jd_settings', 'zcc_desktop_pet_task_enabled']), checkLoginStatus()]);
     if (revision !== settingsRevision) return; // 登录态快速变化时，旧异步结果不得覆盖最新状态
@@ -765,6 +846,7 @@
   applySettings(false);
   if (chrome.storage && chrome.storage.onChanged) {
     chrome.storage.onChanged.addListener(function (changes, area) {
+      if (!isExtensionContextValid()) { stopPetTick(); return; }
       if (area !== 'local') return;
       // 退出登录会立即隐藏人物并停止调度；重新登录后按设置恢复，10秒首巡只执行一次
       if (changes.zhichacha_token || changes.zcc_desktop_pet_task_enabled) applySettings(false);
@@ -774,6 +856,7 @@
 
   // 回前台巡检距上一轮至少2分钟；冷却期内只恢复界面调度，不重复调用登录校验和巡检接口
   document.addEventListener('visibilitychange', function () {
+    if (!isExtensionContextValid()) { stopPetTick(); return; }
     if (document.hidden) {
       tabWasHidden = true;
       stopPetTick();
@@ -786,7 +869,7 @@
       if (petEnabled) schedulePetTick(0);
       return;
     }
-    // 设置和登录变化已由storage监听维护；到点时直接进入统一巡检，避免回前台重复做一次前置登录校验
+    // 设置和登录变化已由storage监听维护；任务面板回前台仍跳过桌宠补执行，避免双通道重复巡检
     if (!petEnabled) return;
     schedulePetTick(0);
     triggerPetInspection('visibility');

@@ -4,7 +4,7 @@
   if (window.top !== window.self || window.__zccLedgerPanelLoaded) return;
   window.__zccLedgerPanelLoaded = true;
 
-  const state = { tab: 'unfinished', page: 1, pageSize: 20, total: 0, shops: [], rows: [], loading: false };
+  const state = { tab: 'unfinished', page: 1, pageSize: 20, total: 0, shops: [], rows: [], loading: false, shopFilterInitialized: false };
   const emptyForm = () => ({ id: null, shop_id: '', shop_name: '', order_no: '', goods_name: '', buy_order_no: '', express_no: '', express_company: '', resend_no: '', resend_company: '', type: '拒收', status: '待处理', urgency: '低', notified: '未通知', remark: '' });
   const esc = v => String(v === null || v === undefined ? '' : v).replace(/[&<>"']/g, s => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[s]));
   const send = msg => new Promise(resolve => chrome.runtime.sendMessage(msg, response => {
@@ -88,7 +88,11 @@
         if (!r || !r.success) toast((r && r.msg) || '无法打开完整台账页面', true);
       }
       if (action === 'search') { state.page = 1; loadList(); }
-      if (action === 'reset') { panel.querySelectorAll('[data-query]').forEach(x => { x.value = ''; }); state.page = 1; loadList(); }
+      if (action === 'reset') {
+        panel.querySelectorAll('[data-query]').forEach(x => { x.value = ''; });
+        await applyCurrentShopFilter(panel, true); // 重置恢复默认的当前店铺筛选
+        state.page = 1; loadList();
+      }
       if (action === 'prev' && state.page > 1) { state.page--; loadList(); }
       if (action === 'next' && state.page < Math.ceil(state.total / state.pageSize)) { state.page++; loadList(); }
       if (btn.dataset.tab) { state.tab = btn.dataset.tab; state.page = 1; loadList(); }
@@ -116,6 +120,30 @@
     return panel;
   }
 
+  async function getCurrentShop() {
+    // 订单页优先实时识别当前店铺，自主售后等页面使用插件最近保存的店铺信息
+    if (typeof window.__zccGetCurrentShopInfo === 'function') {
+      try {
+        const info = await window.__zccGetCurrentShopInfo();
+        const shopId = String((info && info.shopId) || '').trim();
+        if (shopId) return { shopId, shopName: String((info && info.shopName) || '').trim() };
+      } catch (e) {}
+    }
+    try {
+      const settings = await new Promise(resolve => chrome.storage.local.get(['jd_settings'], r => resolve((r && r.jd_settings) || {})));
+      return { shopId: String(settings.shopId || '').trim(), shopName: String(settings.shopName || '').trim() };
+    } catch (e) { return { shopId: '', shopName: '' }; }
+  }
+  async function applyCurrentShopFilter(panel, force) {
+    if (state.shopFilterInitialized && !force) return;
+    state.shopFilterInitialized = true;
+    const select = panel.querySelector('[data-query="shopId"]');
+    if (!select || (!force && select.value)) return; // 用户已手动选择时不覆盖
+    const current = await getCurrentShop();
+    const matched = current.shopId && state.shops.some(s => String(s.shop_id) === current.shopId);
+    select.value = matched ? current.shopId : ''; // 未绑定或识别不到店铺时回退全部店铺，避免误查空结果
+  }
+
   async function loadShops() {
     if (state.shops.length) return state.shops;
     const r = await api('/shop/list'); state.shops = r.data || [];
@@ -124,8 +152,10 @@
     return state.shops;
   }
   async function loadCounts() {
-    try { const r = await api('/ledger/counts'); const c = r.data || {};
+    try {
       const panel = ensureList();
+      const shopId = panel.querySelector('[data-query="shopId"]').value.trim();
+      const r = await api('/ledger/counts', { query: shopId ? { shopId } : {} }); const c = r.data || {};
       panel.querySelector('[data-tab="unfinished"] b').textContent = String(c.unfinished || 0);
       panel.querySelector('[data-tab="finished"] b').textContent = String(c.finished || 0);
       panel.querySelector('[data-tab="all"] b').textContent = String(c.all || 0);
@@ -164,8 +194,13 @@
       <div class="zcc-lg-card-foot"><div><span class="zcc-lg-status st-${esc(r.status)}">${esc(r.status)}</span><span class="zcc-lg-urgency">${esc(r.urgency || '低')}优先级</span><span>通知：${esc(r.notified || '未通知')}</span></div>${r.remark ? '<span class="zcc-lg-remark-text" title="' + esc(r.remark) + '">备注：' + esc(r.remark) + '</span>' : ''}</div>
     </article>`;
   }
-  function openList() {
-    const panel = ensureList(); panel.style.display = 'flex'; loadShops().catch(e => toast(e.message, true)); loadList();
+  async function openList() {
+    const panel = ensureList(); panel.style.display = 'flex';
+    try {
+      await loadShops();
+      await applyCurrentShopFilter(panel, false); // 首次打开默认只查询当前店铺，后续保留用户手动选择
+    } catch (e) { toast(e.message, true); }
+    loadList();
   }
 
   function field(label, name, type = 'input', options = []) {

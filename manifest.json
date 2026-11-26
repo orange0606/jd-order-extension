@@ -60,15 +60,27 @@
       ],
       "js": [
         "config.js",
-        "content/content.js",
-        "content/desktop-pet.js"
+        "content/content.js"
       ],
       "css": [
-        "content/content.css",
-        "content/desktop-pet.css"
+        "content/content.css"
       ],
       "run_at": "document_idle",
       "all_frames": true
+    },
+    {
+      "matches": [
+        "https://shop.jd.com/jdm/trade*",
+        "http://81.71.9.134/zhichacha*"
+      ],
+      "js": [
+        "content/desktop-pet.js"
+      ],
+      "css": [
+        "content/desktop-pet.css"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
     },
     {
       "matches": [
@@ -106,7 +118,7 @@
     },
     {
       "matches": [
-        "https://shop.jd.com/jdm/trade/orders/order-list*"
+        "https://shop.jd.com/jdm/trade/*"
       ],
       "js": [
         "content/order-pdd-win.js"
@@ -189,7 +201,8 @@
         "content/*"
       ],
       "matches": [
-        "https://shop.jd.com/*"
+        "https://shop.jd.com/*",
+        "http://81.71.9.134/*"
       ]
     },
     {

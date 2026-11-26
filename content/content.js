@@ -1538,7 +1538,7 @@
   // ==================== 待出库 · 定时任务面板 ====================
   // 任务0：查单发货（由原浮动面板定时查单发货迁入，固定30分钟，不再使用设置中的定时时间与时间范围）
   // 任务：自动切换店铺（固定每1小时10分，执行后重置 查单发货/已取消关联单数量/同步物流状态 的计时并立即重新触发）
-  // 任务1：每30分钟通过小窗加载“已取消”订单页，取全部订单号后调京巴士跟单接口，统计仍关联采购单数量
+  // 任务1：每30分钟按静默标签→100×100小窗→700×700小窗加载“已取消”订单页，取全部订单号后调京巴士跟单接口，统计仍关联采购单数量
   // 任务2：每1小时通过小窗载入京巴士物流状态页，5秒后自动点击“同步物流状态(并发送取件码)”，点击后锁5分钟防重复执行
   // 自动定时执行时段可在面板底部编辑（默认08:00~20:00，本地缓存）；手动“立即执行”不受时段限制；小窗类任务可勾选“显示视图”查看执行过程（约500x600）
   // 任务3：同步当前页订单（固定30分钟，切订单tab立即执行一次）；已取消订单一并采集，后端只覆盖已有记录
@@ -1801,8 +1801,8 @@
   const TASK_DEFS = [
     { kind: 'ship', icon: '🚚', name: '查单发货', intervalText: '每30分钟', swKey: 'zcc_task_auto_ship', view: false, needLogin: false,
       steps: ['查找发货按钮并执行', '完成发货'] },
-    { kind: 'canceled', icon: '🔗', name: '已取消订单关联单数量', intervalText: '每30分钟', swKey: 'zcc_task_canceled_assoc', view: true, viewKey: 'zcc_task_canceled_assoc_view', needLogin: true,
-      steps: ['独立标签加载已取消订单页', '接口直查关联单', '汇总结果'] },
+    { kind: 'canceled', icon: '🔗', name: '已取消订单关联单数量', intervalText: '每30分钟', swKey: 'zcc_task_canceled_assoc', view: false, needLogin: true,
+      steps: ['静默标签加载已取消订单页', '失败转100/700小窗补采并直查关联单', '汇总结果'] },
     { kind: 'express', icon: '📮', name: '同步物流状态(并发送取件码)', intervalText: '每1小时', swKey: 'zcc_task_express_sync', view: true, viewKey: 'zcc_task_express_view', needLogin: true,
       steps: ['载入物流状态页', '自动点击同步并开始发送', '等待执行(约5分钟)'] },
     { kind: 'switchShop', icon: '🔁', name: '自动切换店铺', intervalText: '每1小时10分', swKey: 'zcc_task_switch_shop', view: false, needLogin: true,
@@ -1859,7 +1859,7 @@
   }
 
   // 小泷桌宠巡检：复用统一定时器；未登录时不写执行时间、不启动任务状态，也不发任何巡检数据请求
-  async function runTaskPetInspection() {
+  async function runTaskPetInspection(reason) {
     if (__taskPetRunning) return;
     if (!(await checkLoginStatus())) { setTaskStatus('pet', '未登录智查查，无法执行', 'is-error'); return; }
     __taskPetRunning = true;
@@ -1869,7 +1869,7 @@
     try {
       if (typeof window.__zccRunDesktopPetInspection !== 'function') throw new Error('小泷桌宠模块尚未加载');
       setTaskStatus('pet', '小泷正在刷新数量、金额与广告费用...', 'is-checking');
-      const summary = await window.__zccRunDesktopPetInspection();
+      const summary = await window.__zccRunDesktopPetInspection(reason);
       setTaskStep('pet', 5);
       setTaskStatus('pet', summary || '小泷巡检完成', 'is-done');
     } catch (e) {
@@ -2158,7 +2158,11 @@
     if (!__taskPanelVisibilityBound) {
       __taskPanelVisibilityBound = true;
       document.addEventListener('visibilitychange', function () {
-        if (!document.hidden) { scheduleTaskWake(); updateTaskNextTimes(); updateTaskGreeting(); } // 后台标签页可能节流，回到前台立即重排并补查到点任务
+        if (!document.hidden) {
+          scheduleTaskWake();
+          updateTaskNextTimes(true, true); // 回前台不补执行桌宠巡检，其他到点任务保持原补执行逻辑
+          updateTaskGreeting();
+        } // 后台标签页可能节流，回到前台立即重排并补查到点任务
       });
     }
   }
@@ -2217,7 +2221,8 @@
 
   // 各任务下一次预计执行时间：未开启不显示；已到点显示“即将执行”并在允许时段内立即补执行，不再等下一轮10分钟检查
   // allowExec=false 时只刷新显示不补执行（切换店铺任务重置其他任务后使用，等页面刷新后自动执行）
-  function updateTaskNextTimes(allowExec) {
+  // skipPetInspection=true 时仅跳过桌宠补巡检，用于回前台场景；正常10分钟调度不受影响
+  function updateTaskNextTimes(allowExec, skipPetInspection) {
     const canExec = allowExec !== false && Date.now() >= __taskPanelReadyAt; // 页面打开前10秒只显示预计时间，不自动补执行
     const now = Date.now();
     [
@@ -2236,7 +2241,8 @@
           if (rawNext <= now && (t.allDay || inTaskTimeWindow())) {
             if (el) { el.textContent = '即将执行'; el.title = '已到达预计执行时间'; }
             // 到点补执行不依赖面板是否存在；函数内有防重入锁与5分钟冷却，重复调用安全
-            if (canExec) t.exec();
+            // 回前台场景仅屏蔽桌宠，避免切换标签触发巡检；其余任务仍正常补执行
+            if (canExec && !(skipPetInspection && t.exec === runTaskPetInspection)) t.exec();
             return;
           }
           // 到点但当前不在时段：顺延到下一个时段开始；未到点但预计时间超出时段：同样顺延，不显示错误的23:08等时间
@@ -2336,27 +2342,26 @@
   }
 
   // 已取消列表采集：统一使用独立标签页加载真实订单页，不再使用 iframe，避免京东限制框架内渲染；
-  // 默认强制打开不置前的后台小标签，读完自动关闭；勾选“视图”时强制使用600×700独立浏览器小窗
+  // 默认由SW统一函数按静默标签→100×100小窗→700×700小窗逐级补采，不再提供单独的视图开关
   async function collectCanceledIdsViaTab() {
-    const visible = await getTaskSwitch('zcc_task_canceled_assoc_view');
     // 无论当前是否已处于已取消Tab都重新打开采集页，避免复用当前页面旧数据或渲染延迟
-    return collectCanceledViaBackgroundTab(visible);
+    return collectCanceledViaBackgroundTab();
   }
 
   // 独立标签页采集：默认不置前，由 SW 主动轮询读取订单，读完自动关闭，不干扰用户当前页面
-  function collectCanceledViaBackgroundTab(visible) {
+  function collectCanceledViaBackgroundTab() {
     return new Promise(function (resolve) {
       let waited = 0;
       const progress = setInterval(function () {
         waited += 2;
-        setTaskStatus('canceled', (visible ? '正在独立小窗' : '正在后台小标签') + '读取已取消订单（已等待 ' + waited + 's）...', 'is-checking');
+        setTaskStatus('canceled', '正在按静默标签/补采小窗读取已取消订单（已等待 ' + waited + 's）...', 'is-checking');
       }, 2000);
       function done(resp) {
         clearInterval(progress);
         resolve(resp || { ok: false, error: '后台采集无响应' });
       }
       try {
-        chrome.runtime.sendMessage({ type: 'ZCC_COLLECT_CANCELED_IDS', visible: !!visible }, function (resp) {
+        chrome.runtime.sendMessage({ type: 'ZCC_COLLECT_CANCELED_IDS' }, function (resp) {
           try { void chrome.runtime.lastError; } catch (e) {}
           done(resp);
         });

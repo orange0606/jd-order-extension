@@ -843,30 +843,44 @@ async function submitReport(payload) {
         });
         return true; // 异步 sendResponse
       }
-      // 已取消订单采集：统一开独立标签页读取真实订单页，读完自动关闭；
-      // 由 SW 主动轮询读取，不使用 iframe，避免框架内渲染限制和后台定时器节流影响
-      if (msg && msg.type === "ZCC_COLLECT_CANCELED_IDS") {
+      // 已取消订单采集统一函数：定时任务、立即执行按钮和小泷手动巡检共用；
+      // 始终按后台静默标签 → 100×100小窗 → 700×700小窗逐级补采，并清理每一级旧标签
+      function collectCanceledWithFallback(msg, sendResponse) {
         var cFinished = false;
         var cTabId = null;
+        var cWindowId = null;
         var cListener = null;
         var cTimer = null;
         var cPollTimer = null;
         var cTries = 0;
         var cLastSignature = '';
         var cStable = 0;
-        function cFinish(resp) {
-          if (cFinished) return;
-          cFinished = true;
+        var cLastEmptyList = false;
+        var cStage = 'tab';
+        function cClearAttempt() {
           try { if (cListener) chrome.tabs.onUpdated.removeListener(cListener); } catch (e) {}
           cListener = null;
           if (cPollTimer) { clearTimeout(cPollTimer); cPollTimer = null; }
           if (cTimer) { clearTimeout(cTimer); cTimer = null; }
           var idToClose = cTabId;
           cTabId = null;
+          cWindowId = null;
           if (idToClose != null) {
             try { chrome.tabs.remove(idToClose, function () { void chrome.runtime.lastError; }); } catch (e) {}
           }
+        }
+        function cFinish(resp) {
+          if (cFinished) return;
+          cFinished = true;
+          cClearAttempt();
           sendResponse(resp);
+        }
+        function cAdvance(reason) {
+          if (cFinished) return;
+          // 当前级读取不到才进入下一级；700×700已是最终渲染兜底，仍失败才结束任务
+          if (cStage === 'tab') { cStartStage('small'); return; }
+          if (cStage === 'small') { cStartStage('large'); return; }
+          cFinish({ ok: false, error: reason || "静默标签及两种尺寸小窗均未读取到已取消订单列表" });
         }
         function cPoll() {
           if (cFinished || cTabId == null) return;
@@ -874,20 +888,25 @@ async function submitReport(payload) {
             if (cFinished) return;
             if (chrome.runtime.lastError) resp = null;
             cTries++;
+            var stageLimit = cStage === 'large' ? 18 : 8;
             if (resp && resp.ok) {
               if (resp.orders && resp.orders.length) {
+                cLastEmptyList = false;
                 // 连续两次读取到同一组订单号才完成，避免切到已取消标签前读取旧列表
                 var signature = resp.orders.map(function (o) { return o.oid; }).sort().join(',');
                 if (signature === cLastSignature) cStable++; else { cLastSignature = signature; cStable = 0; }
-                if (cStable >= 1) { cFinish({ ok: true, orders: resp.orders, ids: resp.ids, url: resp.url }); return; }
-              } else { cLastSignature = ''; cStable = 0; }
-              if (cTries >= 18) {
-                if (resp.emptyList) cFinish({ ok: true, orders: [], ids: [], url: resp.url });
-                else cFinish({ ok: false, error: "已取消订单页已打开，但列表没有稳定渲染出来（可能被登录或风控拦截）" });
+                if (cStable >= 1) { cFinish({ ok: true, orders: resp.orders, ids: resp.ids, url: resp.url, stage: cStage }); return; }
+              } else {
+                cLastSignature = ''; cStable = 0;
+                cLastEmptyList = !!resp.emptyList;
+              }
+              if (cTries >= stageLimit) {
+                if (cLastEmptyList) cFinish({ ok: true, orders: [], ids: [], url: resp.url, stage: cStage });
+                else cAdvance("已取消订单页列表未稳定渲染，进入下一级补采");
                 return;
               }
-            } else if (cTries >= 18) {
-              cFinish({ ok: false, error: "后台采集页加载超时，未读取到订单列表" });
+            } else if (cTries >= stageLimit) {
+              cAdvance("当前采集页加载超时，进入下一级补采");
               return;
             }
             cPollTimer = setTimeout(cPoll, 2000);
@@ -895,54 +914,77 @@ async function submitReport(payload) {
         }
         function cBegin() {
           if (cFinished) return;
-          setTimeout(function () { cPoll(); }, 4000); // 页面 complete 后再等4秒让列表渲染
+          cPollTimer = setTimeout(function () { cPoll(); }, 4000); // 页面 complete 后再等4秒让列表渲染
         }
-        try {
-          var collectUrl = "https://shop.jd.com/jdm/trade/orders/order-list?tabType=canceled&zcc_collect=1";
-          function cOnTab(tab) {
-            if (chrome.runtime.lastError || !tab || tab.id == null) {
-              cFinish({ ok: false, error: "无法打开已取消订单采集页" });
+        function cOnTab(tab) {
+          if (cFinished) return;
+          if (chrome.runtime.lastError || !tab || tab.id == null) {
+            cAdvance("无法打开当前尺寸的已取消订单采集页");
+            return;
+          }
+          cTabId = tab.id;
+          cListener = function (tabId, info) {
+            if (tabId !== cTabId || cFinished) return;
+            if (info.status === "complete") {
+              try { chrome.tabs.onUpdated.removeListener(cListener); } catch (e) {}
+              cListener = null;
+              cBegin();
+            }
+          };
+          chrome.tabs.onUpdated.addListener(cListener);
+          cTimer = setTimeout(function () {
+            cAdvance("已取消订单当前阶段采集超时");
+          }, cStage === 'large' ? 50000 : 22000);
+          // 页面可能在监听器挂上之前就已加载完成，主动补查一次状态
+          chrome.tabs.get(cTabId, function (t) {
+            if (cFinished || !t) return;
+            if (t.status === "complete" && cListener) {
+              try { chrome.tabs.onUpdated.removeListener(cListener); } catch (e) {}
+              cListener = null;
+              cBegin();
+            }
+          });
+        }
+        function cStartStage(stage) {
+          if (cFinished) return;
+          cClearAttempt();
+          cStage = stage;
+          cTries = 0;
+          cLastSignature = '';
+          cStable = 0;
+          cLastEmptyList = false;
+          var collectUrl = "https://shop.jd.com/jdm/trade/orders/order-list?tabType=canceled&zcc_collect=1&zcc_collect_ts=" + Date.now();
+          try {
+            if (stage === 'tab') {
+              chrome.tabs.create({ url: collectUrl, active: false }, cOnTab); // 第一级始终使用不置前的静默标签
               return;
             }
-            cTabId = tab.id;
-            cListener = function (tabId, info) {
-              if (tabId !== cTabId || cFinished) return;
-              if (info.status === "complete") {
-                try { chrome.tabs.onUpdated.removeListener(cListener); } catch (e) {}
-                cListener = null;
-                cBegin();
-              }
-            };
-            chrome.tabs.onUpdated.addListener(cListener);
-            cTimer = setTimeout(function () {
-              cFinish({ ok: false, error: "已取消订单采集超时（50秒）" });
-            }, 50000);
-            // 页面可能在监听器挂上之前就已加载完成，主动补查一次状态
-            chrome.tabs.get(cTabId, function (t) {
-              if (cFinished || !t) return;
-              if (t.status === "complete" && cListener) {
-                try { chrome.tabs.onUpdated.removeListener(cListener); } catch (e) {}
-                cListener = null;
-                cBegin();
-              }
-            });
+            var size = stage === 'small' ? 100 : 700;
+            if (chrome.windows && chrome.windows.create) {
+              chrome.windows.create({ url: collectUrl, type: "popup", width: size, height: size, left: 80, top: 60, focused: false }, function (win) {
+                if (chrome.runtime.lastError || !win || !win.tabs || !win.tabs.length) {
+                  if (stage === 'small') { cAdvance("100×100小窗不可用，改用700×700小窗"); return; }
+                  // 360等浏览器不支持700×700 popup时，保留前台标签最终兜底，不让任务中断
+                  chrome.tabs.create({ url: collectUrl, active: true }, cOnTab);
+                  return;
+                }
+                cWindowId = win.id;
+                cOnTab(win.tabs[0]);
+              });
+            } else if (stage === 'small') {
+              cAdvance("当前浏览器不支持100×100小窗，改用700×700兜底");
+            } else {
+              chrome.tabs.create({ url: collectUrl, active: true }, cOnTab);
+            }
+          } catch (e) {
+            cAdvance(String((e && e.message) || e));
           }
-          if (msg.visible && chrome.windows && chrome.windows.create) {
-            // 勾选“视图”：使用真正的顶层浏览器小窗，不用iframe；读取结束关闭唯一标签时小窗一并关闭
-            chrome.windows.create({ url: collectUrl, type: "popup", width: 600, height: 700, left: 80, top: 60, focused: true }, function (win) {
-              if (chrome.runtime.lastError || !win || !win.tabs || !win.tabs.length) {
-                // 360等浏览器不支持popup时退回落到前台标签页，不让任务中断
-                chrome.tabs.create({ url: collectUrl, active: true }, cOnTab);
-                return;
-              }
-              cOnTab(win.tabs[0]);
-            });
-          } else {
-            chrome.tabs.create({ url: collectUrl, active: false }, cOnTab); // 默认后台小标签，不抢占当前页面
-          }
-        } catch (e) {
-          cFinish({ ok: false, error: String((e && e.message) || e) });
         }
+        // 所有入口固定从静默标签开始，后续补采小窗不再需要单独的视图设置
+        cStartStage('tab');
+      }
+      if (msg && msg.type === "ZCC_COLLECT_CANCELED_IDS") {
+        collectCanceledWithFallback(msg, sendResponse);
         return true; // 异步 sendResponse
       }
     });
@@ -1778,64 +1820,144 @@ async function submitReport(payload) {
 })();
 
 /* ===== 小泷京准通广告费用静默采集 =====
-   使用屏幕内正常尺寸的小窗/小标签让京准通SPA完整渲染，读取总花费后立即关闭；查不到则静默结束，不影响其他巡检 */
+   默认按后台静默标签 → 100×100小窗 → 700×700小窗逐级补采；读取总花费后立即关闭 */
 (function () {
   var adCostJob = null;
   var AD_COST_URL = 'https://jzt.jd.com/home/#/index';
+  var AD_COST_TAB_WAIT = 15000;
+  var AD_COST_SMALL_WAIT = 12000;
+  var AD_COST_LARGE_WAIT = 30000;
+
+  function adCostUrl() {
+    return AD_COST_URL + (AD_COST_URL.indexOf('?') >= 0 ? '&' : '?') + 'zcc_ad_collect=' + Date.now();
+  }
+
+  function closeAdCostTarget(job) {
+    if (!job) return;
+    var tabId = job.tabId;
+    job.tabId = null;
+    job.windowId = null;
+    if (tabId != null) {
+      try { chrome.tabs.remove(tabId, function () { void chrome.runtime.lastError; }); } catch (e) {}
+    }
+  }
 
   function finishAdCostJob(result) {
     var job = adCostJob;
     if (!job || job.finished) return;
     job.finished = true;
     adCostJob = null;
-    if (job.timer) clearTimeout(job.timer);
-    if (job.tabId != null) {
-      try { chrome.tabs.remove(job.tabId, function () { void chrome.runtime.lastError; }); } catch (e) {}
-    }
+    if (job.timer) { clearTimeout(job.timer); job.timer = null; }
+    closeAdCostTarget(job);
     try { job.sendResponse({ success: true, data: result || { found: false } }); } catch (e) {}
   }
 
-  function openAdCostPage() {
-    var url = AD_COST_URL + (AD_COST_URL.indexOf('?') >= 0 ? '&' : '?') + 'zcc_ad_collect=' + Date.now();
-    function onTab(tab) {
-      if (!adCostJob || adCostJob.finished) return;
-      if (chrome.runtime.lastError || !tab || tab.id == null) { finishAdCostJob({ found: false }); return; }
-      adCostJob.tabId = tab.id;
-      adCostJob.timer = setTimeout(function () { finishAdCostJob({ found: false, reason: '京准通页面读取超时' }); }, 45000);
+  function armAdCostStage(job) {
+    if (!job || adCostJob !== job || job.finished) return;
+    if (job.timer) clearTimeout(job.timer);
+    if (job.stage === 'tab') {
+      job.timer = setTimeout(function () { openAdCostPopup(100); }, AD_COST_TAB_WAIT);
+    } else if (job.stage === 'small') {
+      job.timer = setTimeout(function () { enlargeAdCostWindow(); }, AD_COST_SMALL_WAIT);
+    } else {
+      job.timer = setTimeout(function () {
+        finishAdCostJob({ found: false, reason: '静默标签及100×100、700×700小窗均未读取到京准通总花费' });
+      }, AD_COST_LARGE_WAIT);
     }
+  }
+
+  function onAdCostTab(job, tab) {
+    if (!job || adCostJob !== job || job.finished) return;
+    if (chrome.runtime.lastError || !tab || tab.id == null) {
+      if (job.stage === 'tab') openAdCostPopup(100);
+      else if (job.stage === 'small') openAdCostPopup(700);
+      else finishAdCostJob({ found: false, reason: '无法打开京准通采集页面' });
+      return;
+    }
+    job.tabId = tab.id;
+    armAdCostStage(job);
+  }
+
+  function openAdCostActiveTab() {
+    var job = adCostJob;
+    if (!job || job.finished) return;
+    closeAdCostTarget(job);
+    job.stage = 'large';
+    try { chrome.tabs.create({ url: adCostUrl(), active: true }, function (tab) { onAdCostTab(job, tab); }); }
+    catch (e) { finishAdCostJob({ found: false, reason: '无法打开京准通最终采集页' }); }
+  }
+
+  function openAdCostPopup(size) {
+    var job = adCostJob;
+    if (!job || job.finished) return;
+    closeAdCostTarget(job);
+    job.stage = size === 100 ? 'small' : 'large';
+    var url = adCostUrl();
     try {
-      if (chrome.windows && chrome.windows.create) {
-        // 120x80且移到屏幕外会导致部分京准通页面不渲染；改成屏幕内正常小窗，非聚焦显示、读完自动关闭
-        chrome.windows.create({ url: url, type: 'popup', width: 560, height: 680, left: 80, top: 60, focused: false }, function (win) {
-          if (chrome.runtime.lastError || !win || !win.tabs || !win.tabs.length) {
-            // 360等不支持popup时退到小标签；前台加载可确保SPA渲染，采集结束会立即关闭
-            chrome.tabs.create({ url: url, active: true }, onTab);
-            return;
-          }
-          onTab(win.tabs[0]);
-        });
-      } else {
-        chrome.tabs.create({ url: url, active: true }, onTab);
+      if (!chrome.windows || !chrome.windows.create) {
+        if (size === 100) openAdCostPopup(700); else openAdCostActiveTab();
+        return;
       }
+      chrome.windows.create({ url: url, type: 'popup', width: size, height: size, left: 80, top: 60, focused: false }, function (win) {
+        if (!adCostJob || adCostJob !== job || job.finished) return;
+        if (chrome.runtime.lastError || !win || !win.tabs || !win.tabs.length) {
+          // 小窗不可用时直接升级700×700；最终小窗也不可用时保留前台标签兜底
+          if (size === 100) openAdCostPopup(700); else openAdCostActiveTab();
+          return;
+        }
+        job.windowId = win.id;
+        onAdCostTab(job, win.tabs[0]);
+      });
     } catch (e) {
-      try { chrome.tabs.create({ url: url, active: true }, onTab); }
-      catch (err) { finishAdCostJob({ found: false, reason: '无法打开京准通采集小窗' }); }
+      if (size === 100) openAdCostPopup(700); else openAdCostActiveTab();
     }
+  }
+
+  function enlargeAdCostWindow() {
+    var job = adCostJob;
+    if (!job || job.finished) return;
+    if (job.timer) { clearTimeout(job.timer); job.timer = null; }
+    // 优先保留当前页面并放大，原采集脚本会继续每秒读取；放大失败则重新打开700×700干净页面
+    if (job.windowId != null && chrome.windows && chrome.windows.update) {
+      job.stage = 'large';
+      try {
+        chrome.windows.update(job.windowId, { width: 700, height: 700, focused: false }, function () {
+          if (!adCostJob || adCostJob !== job || job.finished) return;
+          if (chrome.runtime.lastError) { openAdCostPopup(700); return; }
+          armAdCostStage(job);
+        });
+        return;
+      } catch (e) {}
+    }
+    openAdCostPopup(700);
+  }
+
+  function openAdCostSilentTab() {
+    var job = adCostJob;
+    if (!job || job.finished) return;
+    job.stage = 'tab';
+    try { chrome.tabs.create({ url: adCostUrl(), active: false }, function (tab) { onAdCostTab(job, tab); }); }
+    catch (e) { openAdCostPopup(100); }
   }
 
   chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     if (!msg) return;
     if (msg.type === 'ZCC_AD_COST_QUERY') {
       if (adCostJob) { sendResponse({ success: true, data: { found: false, busy: true } }); return; }
-      adCostJob = { sendResponse: sendResponse, tabId: null, timer: null, finished: false };
-      openAdCostPage();
-      return true; // 等待采集结果或45秒超时
+      adCostJob = { sendResponse: sendResponse, stage: 'tab', tabId: null, windowId: null, timer: null, finished: false };
+      openAdCostSilentTab();
+      return true; // 等待任一阶段采集成功，或700×700最终阶段超时
     }
     if (msg.type === 'ZCC_AD_COST_COLLECTED') {
       if (!adCostJob || !sender.tab || sender.tab.id !== adCostJob.tabId) return;
       var cost = Number(msg.cost);
-      if (msg.found && isFinite(cost) && cost >= 0) finishAdCostJob({ found: true, cost: cost, url: String(msg.url || '') });
-      else if (msg.found === false) finishAdCostJob({ found: false, reason: String(msg.reason || '未读取到京准通总花费') });
+      if (msg.found && isFinite(cost) && cost >= 0) {
+        finishAdCostJob({ found: true, cost: cost, url: String(msg.url || ''), stage: adCostJob.stage });
+      } else if (msg.found === false) {
+        if (adCostJob.stage === 'tab') openAdCostPopup(100);
+        else if (adCostJob.stage === 'small') enlargeAdCostWindow();
+        else finishAdCostJob({ found: false, reason: String(msg.reason || '未读取到京准通总花费') });
+      }
       // 不回复采集脚本：结果统一返回给发起巡检的小泷页面
     }
   });
