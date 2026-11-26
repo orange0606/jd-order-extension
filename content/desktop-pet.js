@@ -1,6 +1,6 @@
 /**
  * 小泷桌宠：右上角二次元数量巡检助手
- * 10分钟周期由content.js统一调度；本模块负责10秒首巡、回前台2分钟间隔重巡和点击人物30秒节流
+ * 15分钟周期由content.js统一调度；本模块负责10秒首巡和点击人物30秒节流
  * 未登录智查查时不渲染人物、不启动循环调度、不执行任何巡检数据请求
  * 今日订单和金额严格按当前店铺统计；广告费用由京准通小窗读取后自动关闭
  */
@@ -40,7 +40,6 @@
   let lastInspectionStartedAt = 0;
   let initialInspectionTimer = null;
   let initialInspectionHandled = false;
-  let tabWasHidden = document.hidden;
 
   // 性能约定：全模块仅保留一个循环调度器；首巡、互动恢复和菜单隐藏均为可清理的一次性计时
   let petTickTimer = null;
@@ -48,7 +47,6 @@
   let lastOutfitCheckAt = Date.now();
   const INITIAL_INSPECTION_DELAY = 10000;
   const MANUAL_CLICK_COOLDOWN = 30000;
-  const VISIBILITY_INSPECTION_COOLDOWN = 120000; // 回前台巡检距离上一轮至少2分钟，避免频繁切换标签产生重复请求
   const PET_POSITION_LAYOUT = 'right-top-v1';
   const PAGE_ENTERED_AT = Date.now();
 
@@ -354,7 +352,7 @@
     return runInspection(reason);
   }
 
-  // 页面进入10秒后首巡；若同一时刻已有巡检刚启动则跳过重复请求，10分钟周期仍由content.js统一调度
+  // 页面进入10秒后首巡；若同一时刻已有巡检刚启动则跳过重复请求，15分钟周期仍由content.js统一调度
   function scheduleInitialInspection() {
     if (initialInspectionHandled || initialInspectionTimer || !loginActive || !petTaskEnabled) return;
     const delay = Math.max(0, INITIAL_INSPECTION_DELAY - (Date.now() - PAGE_ENTERED_AT));
@@ -552,7 +550,7 @@
       '<div class="zcc-pet-bubble" id="zcc-pet-bubble" role="status" aria-live="polite">' +
       '  <div class="zcc-pet-bubble-title" id="zcc-pet-title">小泷来啦～</div>' +
       '  <div class="zcc-pet-bubble-text" id="zcc-pet-text">我去看看采购、台账和今日单量，马上回来！</div>' +
-      '  <div class="zcc-pet-bubble-footer"><span class="zcc-pet-bubble-meta" id="zcc-pet-meta">每10分钟巡检 · 点小泷可立即刷新</span>' +
+      '  <div class="zcc-pet-bubble-footer"><span class="zcc-pet-bubble-meta" id="zcc-pet-meta">每15分钟巡检 · 点小泷可立即刷新</span>' +
       '  <button type="button" class="zcc-pet-interact" id="zcc-pet-interact" title="空闲时和小泷互动">♡ 逗逗小泷</button></div>' +
       '</div>' +
       '<button type="button" class="zcc-pet-character" id="zcc-pet-character" data-expression="normal" title="小泷桌宠：点击立即巡检，按住可拖动">' +
@@ -608,7 +606,7 @@
     bubble.classList.toggle('is-celebrate', !!msg.celebrate);
     pet.querySelector('#zcc-pet-title').textContent = msg.title;
     pet.querySelector('#zcc-pet-text').textContent = msg.text;
-    pet.querySelector('#zcc-pet-meta').textContent = msg.meta || '每10分钟巡检 · 点小泷可立即刷新';
+    pet.querySelector('#zcc-pet-meta').textContent = msg.meta || '每15分钟巡检 · 点小泷可立即刷新';
     // 表情与话术同步：紧急/超时着急，达标开心，未达标加油，其余温柔待机
     setExpression(msg.expression || (msg.level >= 3 ? 'urgent' : (msg.celebrate ? 'celebrate' : (msg.encourage ? 'encourage' : 'normal'))));
     updatePinnedMeta();
@@ -641,7 +639,7 @@
       adCost: function () { return queryAdCost(currentShop).then(function (value) { return { value: value }; }); },
       canceled: function () {
         if (reason === 'manual') return queryCanceledAssocCount().then(function (count) { return { value: count }; });
-        // 首巡、回前台、设置变化和每10分钟定时巡检只读独立任务结果，避免高频打开取消单采集页
+        // 首巡、设置变化和每15分钟定时巡检只读独立任务结果，避免高频打开取消单采集页
         return storageGet('zcc_task_canceled_assoc_binds').then(function (st) {
           return { value: Number(st.zcc_task_canceled_assoc_binds || 0), cached: true };
         });
@@ -667,7 +665,8 @@
   async function runInspection(reason) {
     if (!isExtensionContextValid()) return '插件已更新，请刷新页面后再使用小泷';
     if (running) return '小泷正在巡检，请稍候';
-    running = true; // 登录校验期间也占用防重入锁，避免首巡、回前台、定时任务和点击并发请求
+    running = true; // 登录校验期间也占用防重入锁，避免首巡、定时任务和点击并发请求
+    lastInspectionStartedAt = Date.now();
     const loggedIn = await checkLoginStatus();
     loginActive = loggedIn;
     if (!loggedIn) {
@@ -675,7 +674,6 @@
       await applySettings(false);
       return '未登录智查查，已跳过小泷巡检';
     }
-    lastInspectionStartedAt = Date.now();
     interacting = false;
     clearPinnedMessage(false);
     lastInteractionAt = Date.now();
@@ -691,7 +689,7 @@
       bubble.classList.remove('is-alert', 'is-warn', 'is-celebrate');
       pet.querySelector('#zcc-pet-title').textContent = '小泷巡检中…';
       pet.querySelector('#zcc-pet-text').textContent = '正在核对最新数量，稍等我一下下～';
-      pet.querySelector('#zcc-pet-meta').textContent = '每10分钟巡检 · 点小泷可立即刷新';
+      pet.querySelector('#zcc-pet-meta').textContent = '每15分钟巡检 · 点小泷可立即刷新';
     }
     try {
       const data = await collectData(reason);
@@ -795,7 +793,7 @@
 
       if (!list.length) list.push({ level: 0, title: '本轮巡检结束', text: '采购巡检只在待出库Tab执行，其他数量暂时没有读取到哦。' });
       const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-      list.forEach(function (m) { m.meta = '每10分钟巡检 · 更新于 ' + time + (m.adCached ? ' · 广告缓存可能有延迟' : ''); });
+      list.forEach(function (m) { m.meta = '每15分钟巡检 · 更新于 ' + time + (m.adCached ? ' · 广告缓存可能有延迟' : ''); });
       setMessages(list);
       return (purchaseSummary ? purchaseSummary + ' · ' : '') + '台账待处理 ' + pendingCount + ' · 取消关联 ' + canceledCount + ' · 今日 ' + todayCount + ' 单 / ¥' + money(todayAmount) + (adSummary ? ' · ' + adSummary : '');
     } finally {
@@ -854,24 +852,10 @@
     });
   }
 
-  // 回前台巡检距上一轮至少2分钟；冷却期内只恢复界面调度，不重复调用登录校验和巡检接口
+  // 标签隐藏时暂停界面调度，回到前台只恢复界面，不自动巡检，避免集中请求造成卡顿
   document.addEventListener('visibilitychange', function () {
     if (!isExtensionContextValid()) { stopPetTick(); return; }
-    if (document.hidden) {
-      tabWasHidden = true;
-      stopPetTick();
-      return;
-    }
-    const shouldInspect = tabWasHidden;
-    tabWasHidden = false;
-    const cooldownPassed = Date.now() - lastInspectionStartedAt >= VISIBILITY_INSPECTION_COOLDOWN;
-    if (!shouldInspect || !petTaskEnabled || !cooldownPassed) {
-      if (petEnabled) schedulePetTick(0);
-      return;
-    }
-    // 设置和登录变化已由storage监听维护；任务面板回前台仍跳过桌宠补执行，避免双通道重复巡检
-    if (!petEnabled) return;
-    schedulePetTick(0);
-    triggerPetInspection('visibility');
+    if (document.hidden) { stopPetTick(); return; }
+    if (petEnabled) schedulePetTick(0);
   });
 })();

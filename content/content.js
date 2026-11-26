@@ -1547,7 +1547,7 @@
   const TASK_CANCELED_INTERVAL = 30 * 60 * 1000; // 任务1：30分钟一轮
   const TASK_EXPRESS_INTERVAL = 60 * 60 * 1000;  // 任务2：1小时一轮
   const TASK_PAGE_SYNC_INTERVAL = 30 * 60 * 1000; // 任务3：同步当前页订单固定30分钟一轮
-  const TASK_PET_INTERVAL = 10 * 60 * 1000; // 小泷桌宠：每10分钟刷新采购/台账/关联单/今日数据/京准通广告费用
+  const TASK_PET_INTERVAL = 15 * 60 * 1000; // 小泷桌宠：每15分钟刷新采购/台账/关联单/今日数据/京准通广告费用
   const TASK_EXPRESS_LOCK = 5 * 60 * 1000;       // 任务2：同步可能执行5分钟，5分钟内不允许再执行
   let __taskPanelTimer = null;       // 全局仅一个调度唤醒定时器：时段内每分钟对齐检查，时段外睡到下个开始时间
   let __taskPanelVisibilityBound = false; // 是否已监听标签页可见性（回前台重排定时器）
@@ -1809,7 +1809,7 @@
       steps: ['执行店铺切换'] },
     { kind: 'pageSync', icon: '🔄', name: '同步当前页订单', intervalText: '每30分钟', swKey: 'zcc_task_page_sync', view: false, needLogin: true, defaultOn: true,
       steps: ['解析本页订单(含已取消)', '同步到智查查(仅已有取消单覆盖)', '完成'] },
-    { kind: 'pet', icon: '🎀', name: '小泷女仆数量与广告巡检', intervalText: '每10分钟', swKey: 'zcc_desktop_pet_task_enabled', view: false, needLogin: true, defaultOn: true,
+    { kind: 'pet', icon: '🎀', name: '小泷女仆数量与广告巡检', intervalText: '每15分钟', swKey: 'zcc_desktop_pet_task_enabled', view: false, needLogin: true, defaultOn: true,
       steps: ['采购巡检(仅待出库)', '台账/取消关联单', '当前店铺今日单量与金额', '京准通广告费用', '完成'] }
   ];
 
@@ -2084,7 +2084,7 @@
     // 各任务：顶部快捷图标 + 开关 + 名称后立即执行图标 + 显示视图
     for (const t of TASK_DEFS) {
       p.querySelector('#zcc-tp-icon-' + t.kind).addEventListener('click', function () { runTaskByKind(t.kind, true); }); // 顶部图标=手动执行
-      if (t.kind === 'pet' && !showPetTask) continue; // 仅隐藏列表行，不影响后台10分钟调度与顶部快捷图标
+      if (t.kind === 'pet' && !showPetTask) continue; // 仅隐藏列表行，不影响后台15分钟调度与顶部快捷图标
       const sw = p.querySelector('#zcc-task-' + t.kind + '-switch');
       sw.checked = (t.needLogin && !logged) ? false : await getTaskSwitchDefault(t.swKey, !!t.defaultOn); // 未登录时其他任务默认关闭；同步当前页订单首次默认开启
       sw.addEventListener('change', function () {
@@ -2221,7 +2221,7 @@
 
   // 各任务下一次预计执行时间：未开启不显示；已到点显示“即将执行”并在允许时段内立即补执行，不再等下一轮10分钟检查
   // allowExec=false 时只刷新显示不补执行（切换店铺任务重置其他任务后使用，等页面刷新后自动执行）
-  // skipPetInspection=true 时仅跳过桌宠补巡检，用于回前台场景；正常10分钟调度不受影响
+  // skipPetInspection=true 时仅跳过桌宠补巡检，用于回前台场景；正常15分钟调度不受影响
   function updateTaskNextTimes(allowExec, skipPetInspection) {
     const canExec = allowExec !== false && Date.now() >= __taskPanelReadyAt; // 页面打开前10秒只显示预计时间，不自动补执行
     const now = Date.now();
