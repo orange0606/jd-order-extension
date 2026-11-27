@@ -1752,6 +1752,23 @@
     }, true);
   }
 
+  // 切换已有任务小窗的显示状态：只调整视图，不重载iframe，避免中断正在执行的同步任务
+  function setTaskFrameVisible(ref, visible) {
+    if (!ref || !ref.wrap || !ref.iframe) return;
+    const wrap = ref.wrap;
+    if (visible) {
+      wrap.setAttribute('data-visible', '1');
+      wrap.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:500px;height:600px;max-width:94vw;max-height:90vh;z-index:2147483646;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.3);display:flex;flex-direction:column;';
+      if (ref.bar) ref.bar.style.display = 'flex';
+      ref.iframe.style.flex = '1 1 auto';
+    } else {
+      wrap.removeAttribute('data-visible');
+      wrap.style.cssText = 'position:fixed;left:-10000px;top:0;width:1280px;height:800px;z-index:-1;';
+      if (ref.bar) ref.bar.style.display = 'none';
+      ref.iframe.style.flex = '';
+    }
+  }
+
   // 通用任务小窗：visible=true 时显示为约500x600的可见弹窗（标题栏可拖动、带关闭按钮），否则屏外隐藏加载
   function createTaskFrame(id, url, visible, title) {
     const old = document.getElementById(id); if (old) old.remove();
@@ -1760,36 +1777,31 @@
     const iframe = document.createElement('iframe');
     iframe.style.cssText = 'width:100%;height:100%;border:0;display:block;';
     iframe.src = url;
-    if (visible) {
-      wrap.setAttribute('data-visible', '1');
-      wrap.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:500px;height:600px;max-width:94vw;max-height:90vh;z-index:2147483646;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.3);display:flex;flex-direction:column;';
-      const bar = document.createElement('div');
-      bar.style.cssText = 'flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f5f7fa;font-size:12px;color:#606266;cursor:move;user-select:none;';
-      const t = document.createElement('span'); t.textContent = title || '任务小窗';
-      const actions = document.createElement('div');
-      actions.style.cssText = 'display:flex;align-items:center;gap:6px;';
-      const refresh = document.createElement('button');
-      refresh.type = 'button'; refresh.textContent = '↻ 刷新'; refresh.title = '刷新当前小窗页面';
-      refresh.style.cssText = 'border:1px solid #dcdfe6;background:#fff;border-radius:4px;padding:2px 10px;font-size:12px;cursor:pointer;color:#606266;';
-      refresh.addEventListener('click', function () {
-        // 直接重载iframe当前src，兼容京东与京巴士等跨域页面
-        iframe.src = iframe.getAttribute('src') || url;
-      });
-      const close = document.createElement('button');
-      close.type = 'button'; close.textContent = '✕ 关闭';
-      close.style.cssText = 'border:1px solid #dcdfe6;background:#fff;border-radius:4px;padding:2px 10px;font-size:12px;cursor:pointer;color:#606266;';
-      close.addEventListener('click', function () { wrap.remove(); });
-      actions.appendChild(refresh); actions.appendChild(close);
-      bar.appendChild(t); bar.appendChild(actions);
-      wrap.appendChild(bar);
-      makePanelDraggable(wrap, bar, 'button'); // 标题栏拖动，刷新/关闭按钮除外
-      iframe.style.flex = '1 1 auto';
-    } else {
-      wrap.style.cssText = 'position:fixed;left:-10000px;top:0;width:1280px;height:800px;z-index:-1;';
-    }
+    const bar = document.createElement('div');
+    bar.style.cssText = 'flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f5f7fa;font-size:12px;color:#606266;cursor:move;user-select:none;';
+    const t = document.createElement('span'); t.textContent = title || '任务小窗';
+    const actions = document.createElement('div');
+    actions.style.cssText = 'display:flex;align-items:center;gap:6px;';
+    const refresh = document.createElement('button');
+    refresh.type = 'button'; refresh.textContent = '↻ 刷新'; refresh.title = '刷新当前小窗页面';
+    refresh.style.cssText = 'border:1px solid #dcdfe6;background:#fff;border-radius:4px;padding:2px 10px;font-size:12px;cursor:pointer;color:#606266;';
+    refresh.addEventListener('click', function () {
+      // 直接重载iframe当前src，兼容京东与京巴士等跨域页面
+      iframe.src = iframe.getAttribute('src') || url;
+    });
+    const close = document.createElement('button');
+    close.type = 'button'; close.textContent = '✕ 关闭';
+    close.style.cssText = 'border:1px solid #dcdfe6;background:#fff;border-radius:4px;padding:2px 10px;font-size:12px;cursor:pointer;color:#606266;';
+    close.addEventListener('click', function () { wrap.remove(); });
+    actions.appendChild(refresh); actions.appendChild(close);
+    bar.appendChild(t); bar.appendChild(actions);
+    wrap.appendChild(bar);
+    makePanelDraggable(wrap, bar, 'button'); // 标题栏拖动，刷新/关闭按钮除外
+    const ref = { wrap: wrap, iframe: iframe, bar: bar };
+    setTaskFrameVisible(ref, visible);
     wrap.appendChild(iframe);
     document.body.appendChild(wrap);
-    return { wrap: wrap, iframe: iframe };
+    return ref;
   }
   // 任务结束自动关闭小窗（含可见小窗）
   function destroyTaskFrame(ref) {
@@ -2097,7 +2109,11 @@
       if (t.view) {
         const view = p.querySelector('#zcc-task-' + t.kind + '-view');
         view.checked = await getTaskSwitch(t.viewKey);
-        view.addEventListener('change', function () { setTaskSwitch(t.viewKey, view.checked); });
+        view.addEventListener('change', function () {
+          setTaskSwitch(t.viewKey, view.checked);
+          // 物流任务执行中也允许随时显示/隐藏小窗，仅切换样式，不重载京巴士页面
+          if (t.kind === 'express') setTaskFrameVisible(__taskExpressFrame, view.checked);
+        });
       }
       updateTaskDetail(t.kind);
     }
@@ -2536,6 +2552,44 @@
     }
   }
 
+  // 同步物流结果通过storage跨域回传；runId确保只读取本轮结果，避免误用上一次完成记录
+  const EXPRESS_TASK_RESULT_KEY = 'zcc_task_express_result';
+  function saveExpressTaskResult(runId, state, text, summary) {
+    if (!runId) return;
+    try {
+      const value = {};
+      value[EXPRESS_TASK_RESULT_KEY] = { runId: runId, state: state, text: text || '', summary: summary || '', finishedAt: Date.now() };
+      chrome.storage.local.set(value);
+    } catch (e) { console.warn('[定时任务] 保存物流执行结果失败', e); }
+  }
+  function readExpressTaskResult(runId) {
+    return new Promise(function (resolve) {
+      try {
+        chrome.storage.local.get([EXPRESS_TASK_RESULT_KEY], function (st) {
+          const result = st && st[EXPRESS_TASK_RESULT_KEY];
+          resolve(result && result.runId === runId ? result : null);
+        });
+      } catch (e) { resolve(null); }
+    });
+  }
+  function extractExpressDialogSummary(dialog) {
+    const text = String((dialog && (dialog.innerText || dialog.textContent)) || '').replace(/\u00a0/g, ' ');
+    const total = text.match(/汇总采购订单\s*[：:]\s*(\d+)\s*条?/);
+    const success = text.match(/发送成功\s*[：:]\s*(\d+)\s*条?/);
+    const failed = text.match(/发送失败\s*[：:]\s*(\d+)\s*条?/);
+    const parts = [];
+    if (total) parts.push('汇总采购订单 ' + total[1] + ' 条');
+    if (success) parts.push('发送成功 ' + success[1] + ' 条');
+    if (failed) parts.push('发送失败 ' + failed[1] + ' 条');
+    return parts.join(' · ');
+  }
+  function formatExpressTaskResult(result) {
+    if (!result) return '';
+    const stateText = result.text || (result.state === 'success' ? '发送完成' : result.state === 'interrupted' ? '任务中断' : '任务失败');
+    const suffix = result.summary || (result.state === 'success' ? '详细数量未获取到' : '未获取到执行结果');
+    return stateText + ' · ' + suffix;
+  }
+
   // 任务2：载入京巴士物流状态页（与京东页跨域，按钮由小窗内 content.js 识别 zcc_auto_sync=1 后5秒自动点击）
   async function runTaskExpressSync() {
     if (__taskExpressRunning) return; // 上一次未结束则跳过本轮
@@ -2552,29 +2606,39 @@
       setTaskLastRun('zcc_task_express_run'); // 触发即记录本轮时间（失败也顺延，避免到点补执行反复重试）
       if (!(await zccHasToken())) { setTaskStatus('express', '未登录智查查，无法执行', 'is-error'); return; }
       const visible = await getTaskSwitch('zcc_task_express_view');
+      const runId = 'express-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+      const frameUrl = 'https://pay.jingbashi.com/back.php/order/status?addtabs=1&zcc_auto_sync=1&zcc_sync_run=' + encodeURIComponent(runId);
       setTaskStatus('express', '正在通过小窗载入京巴士物流状态页...', 'is-checking');
-      __taskExpressFrame = createTaskFrame('zcc-task-express-frame', 'https://pay.jingbashi.com/back.php/order/status?addtabs=1&zcc_auto_sync=1', visible, '京巴士 · 同步物流状态');
+      __taskExpressFrame = createTaskFrame('zcc-task-express-frame', frameUrl, visible, '京巴士 · 同步物流状态');
       setTaskStep('express', 1);
       setTaskStatus('express', '已载入，5秒后自动点击「同步物流状态(并发送取件码)」，本轮约需5分钟', 'is-checking');
-      // 等待执行窗口期间每秒检查小窗：用户主动关闭小窗即视为本轮任务结束，不再继续等待
+      // 每秒检查小窗与本轮回传结果：完成/失败可提前结束，关闭或超时则明确提示未获取到结果
       const waitStart = Date.now();
       let frameClosed = false;
+      let finalResult = null;
       while (Date.now() - waitStart < TASK_EXPRESS_LOCK) {
         const ref = __taskExpressFrame;
         if (!ref || !ref.wrap || !ref.wrap.isConnected) { frameClosed = true; break; }
+        finalResult = await readExpressTaskResult(runId);
+        if (finalResult) break;
         await zccSleep(1000);
       }
+      if (!finalResult) finalResult = await readExpressTaskResult(runId); // 关闭前后可能刚写入结果，最后再补读一次
       const timeText = new Date().toTimeString().slice(0, 5);
-      if (frameClosed) {
-        setTaskStatus('express', '小窗已关闭，本轮任务结束 · ' + timeText, 'is-ok');
-        console.log('[定时任务] 同步物流状态小窗被关闭，本轮任务直接结束');
+      setTaskStep('express', 2);
+      if (finalResult) {
+        const cls = finalResult.state === 'success' ? 'is-ok' : finalResult.state === 'interrupted' ? 'is-warn' : 'is-error';
+        setTaskStatus('express', formatExpressTaskResult(finalResult) + ' · ' + timeText, cls);
+        console.log('[定时任务] 同步物流执行结果：', finalResult);
+      } else if (frameClosed) {
+        setTaskStatus('express', '任务中断 · 小窗已关闭，未获取到执行结果 · ' + timeText, 'is-warn');
+        console.log('[定时任务] 同步物流小窗被关闭，未获取到执行结果');
       } else {
-        setTaskStep('express', 2);
-        setTaskStatus('express', '本轮同步已触发 · ' + timeText, 'is-ok');
-        console.log('[定时任务] 同步物流状态(并发送取件码) 本轮已触发');
+        setTaskStatus('express', '任务失败 · 同步超时，未获取到执行结果 · ' + timeText, 'is-error');
+        console.log('[定时任务] 同步物流超时，未获取到执行结果');
       }
     } catch (e) {
-      setTaskStatus('express', '执行异常：' + ((e && e.message) || e), 'is-error');
+      setTaskStatus('express', '任务失败 · ' + ((e && e.message) || e) + '，未获取到执行结果', 'is-error');
     } finally {
       __taskExpressRunning = false;
       setTaskRunning('express', false);
@@ -4253,6 +4317,43 @@
 
       // 定时任务小窗模式：由待出库定时任务面板载入，独立轮询按钮（最多40秒），找到后5秒自动点击“同步物流状态(并发送取件码)”，不加载浮动面板与既有定时器
       if (/[?&]zcc_auto_sync=1/.test(window.location.href)) {
+        const runMatch = window.location.href.match(/[?&]zcc_sync_run=([^&]+)/);
+        const autoRunId = runMatch ? decodeURIComponent(runMatch[1]) : '';
+        let autoResultFinished = false;
+        let autoResultMonitor = null;
+        let autoHadDialog = false;
+        const autoMonitorStart = Date.now();
+        const finishAutoExpressResult = function (state, text, summary) {
+          if (autoResultFinished) return;
+          autoResultFinished = true;
+          if (autoResultMonitor) { clearInterval(autoResultMonitor); autoResultMonitor = null; }
+          saveExpressTaskResult(autoRunId, state, text, summary);
+        };
+        // 独立监听执行记录：成功/失败立即回传；弹窗中途关闭或超时也回传明确结果
+        autoResultMonitor = setInterval(function () {
+          if (autoResultFinished) return;
+          const dialog = document.querySelector('.jbs-send-express-modal');
+          if (dialog) {
+            autoHadDialog = true;
+            const statusEl = dialog.querySelector('.jbs-sync-buy-log-status');
+            const state = statusEl ? (statusEl.getAttribute('data-state') || '') : '';
+            const text = statusEl ? statusEl.textContent.trim() : '';
+            if (state === 'success' || text.includes('发送完成')) {
+              finishAutoExpressResult('success', text || '发送完成', extractExpressDialogSummary(dialog));
+              return;
+            }
+            if (state === 'error' || state === 'warning') {
+              finishAutoExpressResult('error', text || '任务失败', extractExpressDialogSummary(dialog));
+              return;
+            }
+          } else if (autoHadDialog) {
+            finishAutoExpressResult('interrupted', '任务中断', '同步弹窗已关闭，执行结果未获取到');
+            return;
+          }
+          if (Date.now() - autoMonitorStart >= TASK_EXPRESS_LOCK) {
+            finishAutoExpressResult('error', '任务失败', '同步超时，未获取到执行结果');
+          }
+        }, 1000);
         let waited = 0;
         const findTimer = setInterval(function () {
           waited += 1000;
@@ -4275,13 +4376,18 @@
                   } else if (modalWaited >= 15000) {
                     clearInterval(modalTimer);
                     console.log('[定时任务] 15秒内未出现同步弹窗，未点击开始发送');
+                    finishAutoExpressResult('error', '任务失败', '未出现同步弹窗，未获取到执行结果');
                   }
                 }, 1000);
-              } catch (e) { console.error('[定时任务] 自动点击同步物流状态失败', e); }
+              } catch (e) {
+                console.error('[定时任务] 自动点击同步物流状态失败', e);
+                finishAutoExpressResult('error', '任务失败', ((e && e.message) || String(e)) + '，未获取到执行结果');
+              }
             }, 5000);
           } else if (waited >= 40000) {
             clearInterval(findTimer);
             console.log('[定时任务] 小窗内40秒未找到同步物流按钮，本轮放弃');
+            finishAutoExpressResult('error', '任务失败', '未找到同步物流按钮，未获取到执行结果');
           }
         }, 1000);
         return;
