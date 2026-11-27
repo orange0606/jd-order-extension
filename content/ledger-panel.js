@@ -184,7 +184,7 @@
       <div class="zcc-lg-card-top">
         <span class="zcc-lg-shop">▣ ${esc(r.shop_name || '未指定店铺')}</span><span class="zcc-lg-type">${esc(r.type)}</span>
         <button class="zcc-lg-order-copy" data-action="copy" data-value="${esc(r.order_no)}" title="复制订单号">订单号 ${esc(r.order_no)} ⧉</button><span class="zcc-lg-time">${fmt(r.created_at)}</span>
-        ${r.status !== '已完结' ? '<button data-action="finish" data-id="' + r.id + '" class="zcc-lg-finish">完结</button>' : ''}<button data-action="edit" data-id="${r.id}" class="zcc-lg-edit">编辑</button><button data-action="del" data-id="${r.id}" class="zcc-lg-delete">删除</button>
+        ${r.status !== '已完结' ? '<button data-action="finish" data-id="' + r.id + '" class="zcc-lg-finish" title="标记为已完结" aria-label="标记为已完结"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M8 12.2l2.6 2.6L16.5 9"></path></svg></button>' : ''}<button data-action="edit" data-id="${r.id}" class="zcc-lg-edit">编辑</button><button data-action="del" data-id="${r.id}" class="zcc-lg-delete">删除</button>
       </div>
       ${r.goods_name ? '<div class="zcc-lg-goods" title="' + esc(r.goods_name) + '">▤ ' + esc(r.goods_name) + '</div>' : ''}
       ${(r.buy_order_no || logistics || resend) ? '<div class="zcc-lg-fields">' +
